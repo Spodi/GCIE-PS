@@ -148,6 +148,7 @@ function Read-GCFST {
                         ParentDirPos = Convert-ByteArrayToUint32($FSTEntry[4..7])
                         NextDirPos   = Convert-ByteArrayToUint32($FSTEntry[8..11])
                         FullName     = $null
+                        OffsetShift = $OffsetShift
                     } #| Add-member -PassThru ScriptProperty 'FullName' { $this.ParentFile + $this.Path + $this.Name + '/' }
                     # "Add-Member" is slow, so we add "FullName" empty for now and add its value later in a 3rd pass.
                 }
@@ -163,6 +164,7 @@ function Read-GCFST {
                         Size         = Convert-ByteArrayToUint32($FSTEntry[8..11])
                         ParentDirPos = $lastFolder
                         FullName     = $null
+                        OffsetShift = $OffsetShift
                     } #| Add-Member -PassThru ScriptProperty 'FullName' { $this.ParentFile + $this.Path + $this.Name }
                 } 
             } }
@@ -260,7 +262,7 @@ $list = Read-GCFST $Stream $FSTStart | Where-Object 'Type' -eq 'File' |  & { Pro
 if ($ListFiles) {
     switch ($ListFiles) {
         'Object' {
-            $list | Select-Object FileOffset, Size, Name, FullName | Out-Default
+           Write-Output $list
         }
         'json' {
             $list | Select-Object FileOffset, Size, Name, FullName | ConvertTo-Json | Out-File FileList.json
