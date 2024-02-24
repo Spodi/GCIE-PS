@@ -39,10 +39,394 @@ param (
 )
 
 # Just a little thing to not let me confuse those two.
+
+enum SystemID {
+    GameCube = 0x47
+    Promotional = 0x44
+    GBAPlayer = 0x55
+}
+
+enum RegionCode {
+    USA_NTSC = 0x45
+    Europe_PAL = 0x50
+    Japan_NTSC = 0x4a
+    Other_PAL = 0x55
+}
 enum FSTType {
     File = 0
     Directory = 1
 }
+
+class GCHeaderGameCodeRaw {
+    [byte] $SystemID
+    [ValidateCount(0x2, 0x2)][byte[]] $GameID
+    [byte] $RegionCode
+
+    GCHeaderGameCodeRaw() {}
+
+    GCHeaderGameCodeRaw([hashtable]$Properties) {
+        foreach ($Property in $Properties.Keys) {
+            $this.$Property = $Properties.$Property
+        } 
+    }
+
+    GCHeaderGameCodeRaw([Byte[]]$value) {
+        $this.SystemID = $value[0]
+        $this.GameID = $value[1..2]
+        $this.RegionCode = $value[3]
+    }
+
+}
+
+class GCDiskHeaderRaw {
+    [ValidateCount(0x4, 0x4)][byte[]] $GameCode
+    [ValidateCount(0x2, 0x2)][byte[]] $MakerCode
+    [byte] $DiscID
+    [byte] $Version
+    [byte] $AudioStreaming
+    [byte] $StreamBufferSize
+    [ValidateCount(0x12, 0x12)][byte[]] $Unknown1 #should be all 0
+    [ValidateCount(0x4, 0x4)][byte[]] $DVDMagic #0xc2339f3d
+    [ValidateCount(0x3e0, 0x3e0)][byte[]] $GameName
+    [ValidateCount(0x4, 0x4)][byte[]] $DebugMonitorOffset
+    [ValidateCount(0x4, 0x4)][byte[]] $DebugMonitorAddress
+    [ValidateCount(0x18, 0x18)][byte[]] $Unknown2
+    [ValidateCount(0x4, 0x4)][byte[]] $MainExecutableOffset
+    [ValidateCount(0x4, 0x4)][byte[]] $FSTOffset
+    [ValidateCount(0x4, 0x4)][byte[]] $FSTSize
+    [ValidateCount(0x4, 0x4)][byte[]] $FSTSizeMax
+    [ValidateCount(0x4, 0x4)][byte[]] $CustomOffset
+    [ValidateCount(0x4, 0x4)][byte[]] $CustomSize
+    [ValidateCount(0x4, 0x4)][byte[]] $Unknown3
+    [ValidateCount(0x4, 0x4)][byte[]] $Unknown4
+
+
+    GCDiskHeaderRaw() {}
+
+    GCDiskHeaderRaw([hashtable]$Properties) {
+        foreach ($Property in $Properties.Keys) {
+            $this.$Property = $Properties.$Property
+        } 
+    }
+
+    GCDiskHeaderRaw([Byte[]]$value) {
+        if ($value.count -ne 0x0440) {
+            throw 'Invalid length of byte array! Must be 1088 bytes long.'
+        }
+        $this.GameCode = $value[0x0000..0x0003]
+        $this.MakerCode = $value[0x0004..0x0005]
+        $this.DiscID = $value[0x0006]
+        $this.Version = $value[0x0007]
+        $this.AudioStreaming = $value[0x0008]
+        $this.StreamBufferSize = $value[0x0009]
+        $this.Unknown1 = $value[0x000a..0x001b]
+        $this.DVDMagic = $value[0x001c..0x001f]
+        $this.GameName = $value[0x0020..0x03ff]
+        $this.DebugMonitorOffset = $value[0x0400..0x0403]
+        $this.DebugMonitorAddress = $value[0x0404..0x0407]
+        $this.Unknown2 = $value[0x0408..0x041f]
+        $this.MainExecutableOffset = $value[0x0420..0x0423]
+        $this.FSTOffset = $value[0x0424..0x0427]
+        $this.FSTSize = $value[0x0428..0x042B]
+        $this.FSTSizeMax = $value[0x042C..0x042F]
+        $this.CustomOffset = $value[0x0430..0x0433]
+        $this.CustomSize = $value[0x0434..0x0437]
+        $this.Unknown3 = $value[0x0438..0x043b]
+        $this.Unknown4 = $value[0x043c..0x043f]
+    }
+}
+
+class GCHeaderGameCode {
+    [string] $SystemID
+    [string] $GameID
+    [string] $RegionCode
+
+    GCHeaderGameCode() {
+
+    }
+
+    GCHeaderGameCode([hashtable]$Properties) {
+        foreach ($Property in $Properties.Keys) {
+            $this.$Property = $Properties.$Property
+        }
+    }
+
+    GCHeaderGameCode([Byte[]]$value) {
+        $this.SystemID = [System.Text.Encoding]::GetEncoding(932).GetString($value[0])
+        $this.GameID = [System.Text.Encoding]::GetEncoding(932).GetString($value[1..2])
+        $this.RegionCode = [System.Text.Encoding]::GetEncoding(932).GetString($value[3])
+    }
+
+    [string]ToString() {
+        return $this.SystemID + $this.GameID + $this.RegionCode
+    }
+}
+
+class GCDiskHeader {
+    [GCHeaderGameCode] $GameCode
+    [string] $MakerCode
+    [byte] $DiscID
+    [byte] $Version
+    [byte] $AudioStreaming
+    [byte] $StreamBufferSize
+    [ValidateCount(0x12, 0x12)][byte[]] $Unknown1 #should be all 0
+    [ValidateCount(0x4, 0x4)][byte[]] $DVDMagic #0xc2339f3d
+    [string] $GameName
+    [uint32] $DebugMonitorOffset
+    [uint32] $DebugMonitorAddress
+    [ValidateCount(0x18, 0x18)][byte[]] $Unknown2
+    [uint32] $MainExecutableOffset
+    [uint32] $FSTOffset
+    [uint32] $FSTSize
+    [uint32] $FSTSizeMax
+    [uint32] $CustomOffset
+    [uint32] $CustomSize
+    [ValidateCount(0x4, 0x4)][byte[]] $Unknown3
+    [ValidateCount(0x4, 0x4)][byte[]] $Unknown4
+
+    GCDiskHeader([Byte[]]$value) {
+        if ($value.count -ne 0x0440) {
+            throw 'Invalid length of byte array! Must be 1088 bytes long.'
+        }
+        $this.GameCode = [byte[]]$value[0x0000..0x0003]
+        $this.MakerCode = [System.Text.Encoding]::GetEncoding(932).GetString($value[0x0004..0x0005])
+        $this.DiscID = $value[0x0006]
+        $this.Version = $value[0x0007]
+        $this.AudioStreaming = $value[0x0008]
+        $this.StreamBufferSize = $value[0x0009]
+        $this.Unknown1 = $value[0x000a..0x001b]
+        $this.DVDMagic = $value[0x001c..0x001f]
+        $this.GameName = [System.Text.Encoding]::GetEncoding(932).GetString($value[0x0020..0x03ff]).Trim([char]0)
+        $this.DebugMonitorOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0400..0x0403])
+        $this.DebugMonitorAddress = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0404..0x0407])
+        $this.Unknown2 = $value[0x0408..0x041f]
+        $this.MainExecutableOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0420..0x0423])
+        $this.FSTOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0424..0x0427])
+        $this.FSTSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0428..0x042B])
+        $this.FSTSizeMax = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x042C..0x042F])
+        $this.CustomOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0430..0x0433])
+        $this.CustomSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0434..0x0437])
+        $this.Unknown3 = $value[0x0438..0x043b]
+        $this.Unknown4 = $value[0x043c..0x043f]
+    }
+
+    GCDiskHeader() {
+        $this.GameCode = [GCHeaderGameCode]::new()
+    }
+
+    GCDiskHeader([hashtable]$Properties) {
+        foreach ($Property in $Properties.Keys) {
+            $this.$Property = $Properties.$Property
+        } 
+        if ($null -eq $this.RawData) {
+            $this.GameCode = [GCHeaderGameCode]::new()
+        }
+    }
+
+}
+
+class GCFSEntryRaw {
+    [byte] $DirectoryFlag = 0
+    [ValidateCount(0x3, 0x3)][byte[]] $NameOffsetIntoStringTable = [byte[]]::new(3)
+    [ValidateCount(0x4, 0x4)][byte[]] $FileOffset_ParentDirIndex = [byte[]]::new(4)
+    [ValidateCount(0x4, 0x4)][byte[]] $Size_NextDirIndex_NumEntries = [byte[]]::new(4)
+
+    GCFSEntryRaw() {}
+
+    GCFSEntryRaw([hashtable]$Properties) {
+        foreach ($Property in $Properties.Keys) {
+            $this.$Property = $Properties.$Property
+        } 
+    }
+
+    GCFSEntryRaw([Byte[]]$value) {
+        if ($value.count -ne 12) {
+            throw 'Invalid length of byte array! Must be 12 bytes long.'
+        }
+        $this.DirectoryFlag = $value[0]
+        $this.NameOffsetIntoStringTable = $value[1..3]
+        $this.FileOffset_ParentDirIndex = $value[4..7]
+        $this.Size_NextDirIndex_NumEntries = $value[8..11]
+    }
+}
+class GCFSEntry {
+    [uint32] $Index
+    [GCFSEntry] $ParentFile
+    [FSTType] $Type
+    [string] $Path
+    [uint32] $NameOffsetIntoStringTable
+    [string] $Name
+    [string] $FullName
+    [uint32] $ParentDirIndex
+    hidden [uint32] $_ParentDirIndex
+    [nullable[uint32]] $NextDirIndex
+    [nullable[uint32]] $FileOffset
+    [int32] $TGCOffsetShift
+    [nullable[uint32]] $Size
+    hidden [GCFSEntryRaw] $RawData
+
+    static GCFSEntry() {
+        Update-TypeData -TypeName 'GCFSEntry' -MemberName 'Type' -MemberType ScriptProperty -Value {
+            return [FSTType]$this.RawData.DirectoryFlag
+        } -SecondValue {
+            param($value)
+            $this.RawData.DirectoryFlag = [FSTType]$value
+        } -Force
+        
+        Update-TypeData -TypeName 'GCFSEntry' -MemberName 'NameOffsetIntoStringTable' -MemberType ScriptProperty -Value {
+            [byte[]]$value = [byte[]]::new(1) + $this.RawData.NameOffsetIntoStringTable
+            return [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($value)
+        } -SecondValue {
+            param($value)
+            $buffer = [byte[]]::new(4)
+            [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
+            $this.RawData.NameOffsetIntoStringTable = $buffer[1..3]
+        } -Force
+        
+        Update-TypeData -TypeName 'GCFSEntry' -MemberName 'FileOffset' -MemberType ScriptProperty -Value {
+            if ($this.Type -eq 'File') {
+                return [nullable[uint32]]([System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex) + $this.TGCOffsetShift)
+            }
+            else {
+                return [nullable[uint32]]$null
+            }
+        } -SecondValue {
+            param($value)
+            if ($this.Type -eq 'File') {
+                $buffer = [byte[]]::new(4)
+                [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, ($value - $this.TGCOffsetShift))
+                $this.RawData.FileOffset_ParentDirIndex = $buffer
+            }
+        } -Force
+        
+        Update-TypeData -TypeName 'GCFSEntry' -MemberName 'ParentDirIndex' -MemberType ScriptProperty -Value {
+            if ($this.Type -eq 'Directory') {
+                return [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex)
+            }
+            else {
+                return [uint32]$_ParentDirIndex
+            }
+        } -SecondValue {
+            param($value)
+            if ($this.Type -eq 'Directory') {
+                $buffer = [byte[]]::new(4)
+                [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
+                $this.RawData.FileOffset_ParentDirIndex = $buffer
+            }
+            else {
+                [uint32]$this._ParentDirIndex = $value
+            }
+        } -Force
+        
+        Update-TypeData -TypeName 'GCFSEntry' -MemberName 'Size' -MemberType ScriptProperty -Value {
+            if ($this.Type -eq 'File') {
+                return [nullable[uint32]][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
+            }
+            else {
+                return [nullable[uint32]]$null
+            }
+        } -SecondValue {
+            param($value)
+            if ($this.Type -eq 'File') {
+                $buffer = [byte[]]::new(4)
+                [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
+                $this.RawData.Size_NextDirIndex_NumEntries = $buffer
+            }
+        } -Force
+        
+        Update-TypeData -TypeName 'GCFSEntry' -MemberName 'NextDirIndex' -MemberType ScriptProperty -Value {
+            if ($this.Type -eq 'Directory') {
+                return [nullable[uint32]][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
+            }
+            else {
+                return [nullable[uint32]]$null
+            }
+        } -SecondValue {
+            param($value)
+            if ($this.Type -eq 'Directory') {
+                $buffer = [byte[]]::new(4)
+                [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
+                $this.RawData.Size_NextDirIndex_NumEntries = $buffer
+            }
+        } -Force
+        
+        Update-TypeData -TypeName 'GCFSEntry' -MemberName 'FullName' -MemberType ScriptProperty -Value {
+            if ($this.Type -eq 'File') { return $this.ParentFile.FullName + $this.Path + $this.Name }
+            else { return $this.ParentFile.FullName + $this.Path + $this.Name + '/' }
+        } -Force
+    }
+    
+    GCFSEntry() {
+        $this.RawData = [GCFSEntryRaw]::new()
+    }
+
+    GCFSEntry([hashtable]$Properties) {
+        foreach ($Property in $Properties.Keys) {
+            $this.$Property = $Properties.$Property
+        } 
+        if ($null -eq $this.RawData) {
+            $this.RawData = [GCFSEntryRaw]::new()
+        }
+    }
+
+    GCFSEntry([Byte[]]$value) {
+        $this.RawData = [GCFSEntryRaw]::new($value)
+    }
+
+    [string]ToString() {
+        return $this.FullName
+    }
+}
+
+class GCTGCHeader {
+
+    [uint32] $OwnOffset
+    [ValidateCount(0x4, 0x4)][byte[]] $TGCMagic
+    [ValidateCount(0x4, 0x4)][byte[]] $Unknown1
+    [uint32] $HeaderSize
+    [uint32] $RelativeFSTOffset
+    [uint32] $FSTOffset
+    [uint32] $FSTSize
+    [uint32] $FSTSizeMax
+    [uint32] $MainExecutableOffset
+    [uint32] $MainExecutableSize
+    [uint32] $FileAreaOffset
+    [ValidateCount(0x4, 0x4)][byte[]] $Unknown2
+    [uint32] $BannerOffset
+    [uint32] $BannerSize
+    [uint32] $VirtualFileAreaOffset
+    [int32] $TGCOffsetShift
+
+    static GCTGCHeader() {
+        Update-TypeData -TypeName 'GCTGCHeader' -MemberName 'FSTOffset' -MemberType ScriptProperty -Value {
+            return [uint32]$this.OwnOffset + $this.RelativeFSTOffset
+        } -Force
+
+        Update-TypeData -TypeName 'GCTGCHeader' -MemberName 'TGCOffsetShift' -MemberType ScriptProperty -Value {
+            return [int32](($this.FileAreaOffset - $this.VirtualFileAreaOffset) + $this.OwnOffset)
+        } -Force
+    }
+   
+
+    GCTGCHeader() {}
+
+    GCTGCHeader([byte[]]$value) {
+        $this.TGCMagic = $value[0x0000..0x0003]
+        $this.Unknown1 = $value[0x0004..0x0007]
+        $this.HeaderSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0008..0x000b])
+        $this.RelativeFSTOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0010..0x0013])
+        $this.FSTSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0014..0x0017])
+        $this.FSTSizeMax = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0018..0x001b])
+        $this.MainExecutableOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x001c..0x001f])
+        $this.MainExecutableSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0020..0x0023])
+        $this.FileAreaOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0024..0x0027])
+        $this.Unknown2 = $value[0x0028..0x002b]
+        $this.BannerOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x002c..0x002f])
+        $this.BannerSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0030..0x0033])
+        $this.VirtualFileAreaOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0034..0x0037])
+    }
+}
+
 
 function Split-File {
     <#
@@ -78,7 +462,7 @@ function Split-File {
         }
         $read = $Stream
         $write = [System.IO.File]::OpenWrite($fileOut)
-        $buffer = new-object Byte[] 131072
+        $buffer = [byte[]]::new(131072)
         $BytesToRead = $size
         [void]$read.seek($start, 0)
         while ($BytesToRead -gt 0) {
@@ -101,138 +485,107 @@ function Split-File {
     }
 }
 
-function Convert-ByteArrayToUint32 {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [Byte[]] $value
-    )
-    while ($value.count -lt 4) {
-        $value = [byte[]]@(00) + $value
-    }
-    if ([System.BitConverter]::IsLittleEndian) {
-        [Array]::Reverse($value)
-    }
-    [System.BitConverter]::ToUInt32($value, 0)
-}
-
 function Read-GCFST {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]  [System.IO.Stream] $Stream,
-        [Parameter(Mandatory)]  [uint32] $FSTStart,
-        [Parameter()]  [int32] $OffsetShift,
-        [Parameter()]  [string] $ParentFile
+        [Parameter(Mandatory)]                                  [System.IO.Stream] $Stream,
+        [Parameter()]                                           [GCFSEntry] $ParentFile,
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)] [uint32] $FSTOffset,
+        [Parameter(Mandatory, ValueFromPipelineByPropertyName)] [uint32] $FSTSize,
+        [Parameter(ValueFromPipelineByPropertyName)]            [int32] $TGCOffsetShift
+        
     )
     begin {
-        $FSTEntry = new-object Byte[] 0x0C
+        $buffer = [byte[]]::new(0x0C)
     }
     Process {
-        [void]$Stream.seek($FSTStart, 0)
-        [void]$Stream.read($FSTEntry, 0, 0xC)
+        [void]$Stream.seek($FSTOffset, 0)
+        [void]$Stream.read($buffer, 0, 0xC)
         $root = [PSCustomObject]@{
-            Type       = [FSTType]$FSTEntry[0]
-            EntryCount = Convert-ByteArrayToUint32($FSTEntry[8..11])
+            Type       = [FSTType]$buffer[0]
+            EntryCount = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$buffer[8..11])
         }
         $lastFolder = 0
         $FST = & { for ($i = 1; $i -lt ($root.EntryCount); $i++) {
-                [void]$Stream.read($FSTEntry, 0, 0xC)
-                if ([FSTType]$FSTEntry[0] -eq 'Directory') {
+                [void]$Stream.read($buffer, 0, 0xC)
+                if ([FSTType]$buffer[0] -eq 'Directory') {
                     $lastFolder = $i
-                    [PSCustomObject]@{
-                        Pos          = $i
-                        ParentFile   = $ParentFile
-                        Type         = [FSTType]$FSTEntry[0]
-                        Path         = $null
-                        Name         = $null
-                        NameOffset   = Convert-ByteArrayToUint32($FSTEntry[1..3])
-                        ParentDirPos = Convert-ByteArrayToUint32($FSTEntry[4..7])
-                        NextDirPos   = Convert-ByteArrayToUint32($FSTEntry[8..11])
-                        FullName     = $null
-                        OffsetShift = $OffsetShift
-                    } #| Add-member -PassThru ScriptProperty 'FullName' { $this.ParentFile + $this.Path + $this.Name + '/' }
-                    # "Add-Member" is slow, so we add "FullName" empty for now and add its value later in a 3rd pass.
                 }
-                else {
-                    [PSCustomObject]@{
-                        Pos          = $i
-                        ParentFile   = $ParentFile
-                        Type         = [FSTType]$FSTEntry[0]
-                        Path         = $null
-                        Name         = $null
-                        NameOffset   = Convert-ByteArrayToUint32($FSTEntry[1..3])
-                        FileOffset   = (Convert-ByteArrayToUint32($FSTEntry[4..7])) + $OffsetShift
-                        Size         = Convert-ByteArrayToUint32($FSTEntry[8..11])
-                        ParentDirPos = $lastFolder
-                        FullName     = $null
-                        OffsetShift = $OffsetShift
-                    } #| Add-Member -PassThru ScriptProperty 'FullName' { $this.ParentFile + $this.Path + $this.Name }
-                } 
-            } }
+                $Entry = [GCFSEntry]$buffer
+                $Entry.Index = $i
+                $Entry.ParentFile = $ParentFile
+                $Entry._ParentDirIndex = $lastFolder
+                $Entry.TGCOffsetShift = $TGCOffsetShift
+                $Entry
+            } 
+        }
 
-        $StringTablePos = $Stream.Position
         # 1st Pass: Getting the names from the String-Table
         # Funny enough "& {Process { }}"  is MUCH faster then "Foreach-Object { }" and does the same. 
-        $FST | & { Process {                      
-                $name = & { [void]$Stream.seek(($StringTablePos + $_.nameoffset), 0)
-                    While ($byte -ne 0) {
-                        $byte = $Stream.ReadByte()
-                        if ($byte -ne 0) {
-                            $byte
+
+        $StringTableSize = $FSTSize - ($FSTOffset - $Stream.Position)
+        $FSTStringTable = [byte[]]::new($StringTableSize)
+        [void]$Stream.read($FSTStringTable, 0, $FSTStringTable.Count)
+
+        $FST | & { Process {
+
+                $name = & {
+                    $i = $_.NameOffsetIntoStringTable
+                    while ($i -lt $FSTStringTable.Count) {
+                        if ($FSTStringTable[$i] -ne 0) {
+                            $FSTStringTable[$i]
+                            $i++
                         }
+                        else { break }
                     }
                 }
-                $_.Name = [System.Text.Encoding]::ASCII.GetString($name) 
+                $_.Name = [System.Text.Encoding]::GetEncoding(932).GetString($name) 
                 $_
-            }
-        } | Group-Object ParentDirPos | & { Process {
+                
+           
+            } } | Group-Object ParentDirIndex | & { Process {
                 # 2nd Pass: Add Paths
                 [System.Collections.ArrayList]$path = @('/')
                 $parent = $_.Group[0]
-                while ($parent.ParentDirPos -ne 0) {
-                    $parent = $FST[($parent.ParentDirPos - 1)] # Avoid Where-Object here (slow!). Position in the FST matches the position in the array anyway (root would be [0], but is not in the array, so "-1").
+                while ($parent.ParentDirIndex -ne 0) {
+                    $parent = $FST[($parent.ParentDirIndex - 1)] # Avoid Where-Object here (slow!). Position in the FST matches the position in the array anyway (root would be [0], but is not in the array, so "-1").
                     $Path.insert(0, $parent.Name)
                     $Path.insert(0, '/')             
                 }
                 $_.Group.ForEach('Path', -join $Path)
                 $_.Group  # ungroup things again
             } } | & { Process {
-                # 3rd Pass: Add FullName here and avoid slow "Add-Member"
-                if ($_.Type -eq 'Directory') {
-                    $_.FullName = $_.ParentFile + $_.Path + $_.Name + '/'
-                }
-                else {
-                    $_.FullName = $_.ParentFile + $_.Path + $_.Name
-                }
+                # 3rd Pass: Read any TGC
                 $_
-            } }
+                $_ |  & { Process {
+                        
+                        if ($_.Name -match '\.tgc$') {
+                            $_ | Read-TGC $Stream
+                        } 
+                    } }
+            } 
+        }
     }    
 } 
 
 function Read-TGC {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]                      [System.IO.Stream] $Stream,
-        [Parameter(ValueFromPipelineByPropertyName)]   [uint32] $FileOffset,
-        [Parameter(ValueFromPipelineByPropertyName)]   [string] $FullName
+        [Parameter(Mandatory)]                          [System.IO.Stream] $Stream,
+        [Parameter(ValueFromPipelineByPropertyName)]    [uint32] $FileOffset,
+        [Parameter(ValueFromPipeline)]                  [GCFSEntry] $ParentFile
     )
     begin {
         $TGCMagic = [Byte[]]@(0xae, 0x0f, 0x38, 0xa2)
+        $buffer = [byte[]]::new(0x38)
     }
     Process {
         [void]$Stream.seek($FileOffset, 0)
-        [void]$Stream.read($buffer, 0, 0x4)
-        if (!(Compare-object $buffer $TGCMagic)) {
-            [void]$Stream.seek($FileOffset + 0x0010, 0)
-            [void]$Stream.read($buffer, 0, 0x4)
-            $FSTStart = (Convert-ByteArrayToUint32($buffer)) + $FileOffset
-            [void]$Stream.seek((0x4 * 4), 1)
-            [void]$Stream.read($buffer, 0, 0x4)
-            $fileArea = Convert-ByteArrayToUint32($buffer)
-            [void]$Stream.seek((0x4 * 3), 1)
-            [void]$Stream.read($buffer, 0, 0x4)
-            $virtualFileArea = Convert-ByteArrayToUint32($buffer)
-            $OffsetShift = [Int32](($fileArea - $virtualFileArea) + $FileOffset)
-            Read-GCFST $Stream $FSTStart $OffsetShift $FullName
+        [void]$Stream.read($buffer, 0, 0x38)
+        if (!(Compare-object $buffer[0x0000..0x0003] $TGCMagic)) {
+            $header = [GCTGCHeader]$buffer
+            $header.OwnOffset = $FileOffset
+            $header | Read-GCFST $Stream $ParentFile
         }
     }
 }
@@ -243,32 +596,26 @@ if (!(Test-Path -LiteralPath $fileIn)) {
 
 $Stream = [System.IO.File]::OpenRead($fileIn)
 
-$buffer = new-object Byte[] 0x04
+$buffer = [byte[]]::new(1088)
 
-[void]$Stream.seek(0x0424, 0)
-[void]$Stream.read($buffer, 0, 0x4)
-$FSTStart = Convert-ByteArrayToUint32($buffer)
+[void]$Stream.seek(0, 0)
+[void]$Stream.read($buffer, 0, 1088)
+0xc2339f3d
+[GCDiskHeader]$Disc = $buffer
+Write-Host $Disc.GameCode ' - ' $Disc.GameName
 
-
-$list = Read-GCFST $Stream $FSTStart | Where-Object 'Type' -eq 'File' |  & { Process {
-        $_
-        if ($_.Name -match '\.tgc$') {
-            $_ | Read-TGC $Stream | Where-Object 'Type' -eq 'File' | & { Process {
-                    $_ 
-                } }
-        }
-    } } | Sort-Object FileOffset
+$list = $Disc | Read-GCFST $Stream | Where-Object Type -eq 'File' | Sort-Object FileOffset
 
 if ($ListFiles) {
     switch ($ListFiles) {
         'Object' {
-           Write-Output $list
+            Write-Output $list 
         }
         'json' {
             $list | Select-Object FileOffset, Size, Name, FullName | ConvertTo-Json | Out-File FileList.json
         }
         'Text' {
-            $list | Select-Object FileOffset, Size, Name, FullName | Format-Table | Out-File FileList.txt
+            ($list | Select-Object FileOffset, Size, Name, FullName | Format-Table | Out-String).Trim() | Out-File FileList.txt
         }
     }
 }
@@ -289,17 +636,20 @@ else {
     $list = $list | Where-Object 'Name' -match '^((ura)?zlp_f|zelda2p)\.n64$'
     if ($list) {
         $list | & { Process {
+                # Ocarina of Time
                 if ($_.name -eq 'zlp_f.n64') {
                     Split-File $Stream (join-path $PSScriptRoot 'TLoZ-OoT-GC.z64') -start $_.FileOffset -size $_.Size
                 }
+                # Ocarina of Time - Master Quest
                 elseif ($_.name -eq 'urazlp_f.n64') {
                     Split-File $Stream (join-path $PSScriptRoot 'TLoZ-OoT-MQ-GC.z64') -start $_.FileOffset -size $_.Size
                 }
-                <#
-        elseif ($_.name -eq 'zelda2p.n64') {
-            Split-File $Stream (join-path $PSScriptRoot 'TLoZ-MM-GC.z64') -start $_.FileOffset -size $_.Size
-        }
-        #>
+                
+                # Majoras Mask
+                elseif ($_.name -eq 'zelda2p.n64') {
+                    Split-File $Stream (join-path $PSScriptRoot 'TLoZ-MM-GC.z64') -start $_.FileOffset -size $_.Size
+                }
+                 
             } }
     }
     else {
