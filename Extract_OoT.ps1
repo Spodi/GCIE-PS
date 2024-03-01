@@ -3,11 +3,11 @@
 Extracts or lists files from an uncompressed GameCube image (uncompressed iso). Trys to extract a PAL OoT or MQ ROM by default.
 
 .NOTES
-GameCube Image Extractor Script v23.12.06
+GameCube Image Extractor Script v24.03.01
     
     MIT License
 
-    Copyright (C) 2023 Spodi
+    Copyright (C) 2024 Spodi
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -101,20 +101,6 @@ function Split-File {
     }
 }
 
-function Convert-ByteArrayToUint32 {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [Byte[]] $value
-    )
-    while ($value.count -lt 4) {
-        $value = [byte[]]@(00) + $value
-    }
-    if ([System.BitConverter]::IsLittleEndian) {
-        [Array]::Reverse($value)
-    }
-    [System.BitConverter]::ToUInt32($value, 0)
-}
-
 function Read-GCFST {
     [CmdletBinding()]
     param(
@@ -131,7 +117,7 @@ function Read-GCFST {
         [void]$Stream.read($FSTEntry, 0, 0xC)
         $root = [PSCustomObject]@{
             Type       = [FSTType]$FSTEntry[0]
-            EntryCount = Convert-ByteArrayToUint32($FSTEntry[8..11])
+            EntryCount = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$FSTEntry[8..11])
         }
         $lastFolder = 0
         $FST = & { for ($i = 1; $i -lt ($root.EntryCount); $i++) {
@@ -144,9 +130,9 @@ function Read-GCFST {
                         Type         = [FSTType]$FSTEntry[0]
                         Path         = $null
                         Name         = $null
-                        NameOffset   = Convert-ByteArrayToUint32($FSTEntry[1..3])
-                        ParentDirPos = Convert-ByteArrayToUint32($FSTEntry[4..7])
-                        NextDirPos   = Convert-ByteArrayToUint32($FSTEntry[8..11])
+                        NameOffset   = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]([byte[]]::new(1) + [byte[]]$FSTEntry[1..3]))
+                        ParentDirPos = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$FSTEntry[4..7])
+                        NextDirPos   = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$FSTEntry[8..11])
                         FullName     = $null
                         OffsetShift = $OffsetShift
                     } #| Add-member -PassThru ScriptProperty 'FullName' { $this.ParentFile + $this.Path + $this.Name + '/' }
@@ -159,9 +145,9 @@ function Read-GCFST {
                         Type         = [FSTType]$FSTEntry[0]
                         Path         = $null
                         Name         = $null
-                        NameOffset   = Convert-ByteArrayToUint32($FSTEntry[1..3])
-                        FileOffset   = (Convert-ByteArrayToUint32($FSTEntry[4..7])) + $OffsetShift
-                        Size         = Convert-ByteArrayToUint32($FSTEntry[8..11])
+                        NameOffset   = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]([byte[]]::new(1) + [byte[]]$FSTEntry[1..3]))
+                        FileOffset   = ([System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$FSTEntry[4..7])) + $OffsetShift
+                        Size         = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$FSTEntry[8..11])
                         ParentDirPos = $lastFolder
                         FullName     = $null
                         OffsetShift = $OffsetShift
@@ -181,7 +167,7 @@ function Read-GCFST {
                         }
                     }
                 }
-                $_.Name = [System.Text.Encoding]::ASCII.GetString($name) 
+                $_.Name = [System.Text.Encoding]::GetEncoding(932).GetString($name) 
                 $_
             }
         } | Group-Object ParentDirPos | & { Process {
@@ -224,13 +210,13 @@ function Read-TGC {
         if (!(Compare-object $buffer $TGCMagic)) {
             [void]$Stream.seek($FileOffset + 0x0010, 0)
             [void]$Stream.read($buffer, 0, 0x4)
-            $FSTStart = (Convert-ByteArrayToUint32($buffer)) + $FileOffset
+            $FSTStart = ([System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$buffer)) + $FileOffset
             [void]$Stream.seek((0x4 * 4), 1)
             [void]$Stream.read($buffer, 0, 0x4)
-            $fileArea = Convert-ByteArrayToUint32($buffer)
+            $fileArea = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$buffer)
             [void]$Stream.seek((0x4 * 3), 1)
             [void]$Stream.read($buffer, 0, 0x4)
-            $virtualFileArea = Convert-ByteArrayToUint32($buffer)
+            $virtualFileArea = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$buffer)
             $OffsetShift = [Int32](($fileArea - $virtualFileArea) + $FileOffset)
             Read-GCFST $Stream $FSTStart $OffsetShift $FullName
         }
@@ -247,7 +233,7 @@ $buffer = new-object Byte[] 0x04
 
 [void]$Stream.seek(0x0424, 0)
 [void]$Stream.read($buffer, 0, 0x4)
-$FSTStart = Convert-ByteArrayToUint32($buffer)
+$FSTStart = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$buffer)
 
 
 $list = Read-GCFST $Stream $FSTStart | Where-Object 'Type' -eq 'File' |  & { Process {
