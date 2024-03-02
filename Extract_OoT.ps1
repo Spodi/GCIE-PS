@@ -28,14 +28,14 @@ GameCube Image Extractor Script v24.03.01
     SOFTWARE.
 #>
 
-[CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = "Default")]
+[CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'Default')]
 param (
     # GameCube image file to extract or list files from (uncompressed iso).
-    [Parameter(ParameterSetName = "Extract", Position = 0, Mandatory)][Parameter(ParameterSetName = "List", Position = 0, Mandatory)][Parameter(ParameterSetName = "Default", Position = 0, Mandatory)] [string]$fileIn,
+    [Parameter(ParameterSetName = 'Extract', Position = 0, Mandatory)][Parameter(ParameterSetName = 'List', Position = 0, Mandatory)][Parameter(ParameterSetName = 'Default', Position = 0, Mandatory)] [string]$fileIn,
     # Extracts all files where their full name (path + name) matches this Regular Expression.
-    [Parameter(ParameterSetName = "Extract", Position = 1, Mandatory)] [string]$Extract,
+    [Parameter(ParameterSetName = 'Extract', Position = 1, Mandatory)] [string]$Extract,
     # Lists all files in the image. "Object" sends the file infos as objects to the pipeline. "Text" and "Json" saves the infos as "FileList.txt" or "FileList.json".
-    [Parameter(ParameterSetName = "List", Position = 1, Mandatory)][ValidateSet("Object", "Text", "Json")] [string]$ListFiles
+    [Parameter(ParameterSetName = 'List', Position = 1, Mandatory)][ValidateSet('Object', 'Text', 'Json')] [string]$ListFiles
 )
 
 # Just a little thing to not let me confuse those two.
@@ -63,7 +63,7 @@ function Split-File {
     )
     begin {
         $prevDir = [System.IO.Directory]::GetCurrentDirectory()
-        [System.IO.Directory]::SetCurrentDirectory((Get-location))
+        [System.IO.Directory]::SetCurrentDirectory((Get-Location))
     }
     Process {
         if (Test-Path -Path $fileOut -PathType Leaf) {
@@ -78,7 +78,7 @@ function Split-File {
         }
         $read = $Stream
         $write = [System.IO.File]::OpenWrite($fileOut)
-        $buffer = new-object Byte[] 131072
+        $buffer = New-Object Byte[] 131072
         $BytesToRead = $size
         [void]$read.seek($start, 0)
         while ($BytesToRead -gt 0) {
@@ -110,7 +110,7 @@ function Read-GCFST {
         [Parameter()]  [string] $ParentFile
     )
     begin {
-        $FSTEntry = new-object Byte[] 0x0C
+        $FSTEntry = New-Object Byte[] 0x0C
     }
     Process {
         [void]$Stream.seek($FSTStart, 0)
@@ -134,7 +134,7 @@ function Read-GCFST {
                         ParentDirPos = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$FSTEntry[4..7])
                         NextDirPos   = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$FSTEntry[8..11])
                         FullName     = $null
-                        OffsetShift = $OffsetShift
+                        OffsetShift  = $OffsetShift
                     } #| Add-member -PassThru ScriptProperty 'FullName' { $this.ParentFile + $this.Path + $this.Name + '/' }
                     # "Add-Member" is slow, so we add "FullName" empty for now and add its value later in a 3rd pass.
                 }
@@ -150,7 +150,7 @@ function Read-GCFST {
                         Size         = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$FSTEntry[8..11])
                         ParentDirPos = $lastFolder
                         FullName     = $null
-                        OffsetShift = $OffsetShift
+                        OffsetShift  = $OffsetShift
                     } #| Add-Member -PassThru ScriptProperty 'FullName' { $this.ParentFile + $this.Path + $this.Name }
                 } 
             } }
@@ -207,7 +207,7 @@ function Read-TGC {
     Process {
         [void]$Stream.seek($FileOffset, 0)
         [void]$Stream.read($buffer, 0, 0x4)
-        if (!(Compare-object $buffer $TGCMagic)) {
+        if (!(Compare-Object $buffer $TGCMagic)) {
             [void]$Stream.seek($FileOffset + 0x0010, 0)
             [void]$Stream.read($buffer, 0, 0x4)
             $FSTStart = ([System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$buffer)) + $FileOffset
@@ -229,17 +229,17 @@ if (!(Test-Path -LiteralPath $fileIn)) {
 
 $Stream = [System.IO.File]::OpenRead($fileIn)
 
-$buffer = new-object Byte[] 0x04
+$buffer = New-Object Byte[] 0x04
 
 [void]$Stream.seek(0x0424, 0)
 [void]$Stream.read($buffer, 0, 0x4)
 $FSTStart = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$buffer)
 
 
-$list = Read-GCFST $Stream $FSTStart | Where-Object 'Type' -eq 'File' |  & { Process {
+$list = Read-GCFST $Stream $FSTStart | Where-Object 'Type' -EQ 'File' | & { Process {
         $_
         if ($_.Name -match '\.tgc$') {
-            $_ | Read-TGC $Stream | Where-Object 'Type' -eq 'File' | & { Process {
+            $_ | Read-TGC $Stream | Where-Object 'Type' -EQ 'File' | & { Process {
                     $_ 
                 } }
         }
@@ -248,7 +248,7 @@ $list = Read-GCFST $Stream $FSTStart | Where-Object 'Type' -eq 'File' |  & { Pro
 if ($ListFiles) {
     switch ($ListFiles) {
         'Object' {
-           Write-Output $list
+            Write-Output $list
         }
         'json' {
             $list | Select-Object FileOffset, Size, Name, FullName | ConvertTo-Json | Out-File FileList.json
@@ -260,10 +260,10 @@ if ($ListFiles) {
 }
 
 elseif ($Extract) {
-    $List = $List | Where-Object 'FullName' -match $Extract
+    $List = $List | Where-Object 'FullName' -Match $Extract
     if ($List) {
         $rom | & { Process {
-                Split-File $Stream (join-path $PSScriptRoot $_.Name) -start $_.FileOffset -size $_.Size
+                Split-File $Stream (Join-Path $PSScriptRoot $_.Name) -start $_.FileOffset -size $_.Size
             } }
     }
     else {
@@ -272,14 +272,14 @@ elseif ($Extract) {
 }
 
 else {
-    $list = $list | Where-Object 'Name' -match '^((ura)?zlp_f|zelda2p)\.n64$'
+    $list = $list | Where-Object 'Name' -Match '^((ura)?zlp_f|zelda2p)\.n64$'
     if ($list) {
         $list | & { Process {
                 if ($_.name -eq 'zlp_f.n64') {
-                    Split-File $Stream (join-path $PSScriptRoot 'TLoZ-OoT-GC.z64') -start $_.FileOffset -size $_.Size
+                    Split-File $Stream (Join-Path $PSScriptRoot 'TLoZ-OoT-GC.z64') -start $_.FileOffset -size $_.Size
                 }
                 elseif ($_.name -eq 'urazlp_f.n64') {
-                    Split-File $Stream (join-path $PSScriptRoot 'TLoZ-OoT-MQ-GC.z64') -start $_.FileOffset -size $_.Size
+                    Split-File $Stream (Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC.z64') -start $_.FileOffset -size $_.Size
                 }
                 <#
         elseif ($_.name -eq 'zelda2p.n64') {
