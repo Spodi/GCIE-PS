@@ -30,14 +30,14 @@ GameCube Image Extractor Script v24.02.29
 
 Using Module .\GC.psm1
 
-[CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = "Default")]
+[CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'Default')]
 param (
     # GameCube image file to extract or list files from (uncompressed iso).
-    [Parameter(ParameterSetName = "Extract", Position = 0, Mandatory)][Parameter(ParameterSetName = "List", Position = 0, Mandatory)][Parameter(ParameterSetName = "Default", Position = 0, Mandatory)] [string]$fileIn,
+    [Parameter(ParameterSetName = 'Extract', Position = 0, Mandatory)][Parameter(ParameterSetName = 'List', Position = 0, Mandatory)][Parameter(ParameterSetName = 'Default', Position = 0, Mandatory)] [string]$fileIn,
     # Extracts all files where their full name (path + name) matches this Regular Expression.
-    [Parameter(ParameterSetName = "Extract", Position = 1, Mandatory)] [string]$Extract,
+    [Parameter(ParameterSetName = 'Extract', Position = 1, Mandatory)] [string]$Extract,
     # Lists all files in the image. "Object" sends the file infos as objects to the pipeline. "Text" and "Json" saves the infos as "FileList.txt" or "FileList.json".
-    [Parameter(ParameterSetName = "List", Position = 1, Mandatory)][ValidateSet("Object", "Text", "Json")] [string]$ListFiles
+    [Parameter(ParameterSetName = 'List', Position = 1, Mandatory)][ValidateSet('Object', 'Text', 'Json')] [string]$ListFiles
 )
 
 
@@ -49,7 +49,7 @@ $Stream = [System.IO.File]::OpenRead($fileIn)
 $DiscHeader = [GC.DiscHeader]::Read($Stream)
 Write-Host $DiscHeader.GameCode ' - ' $DiscHeader.GameName
 
-$list = [GC.FSEntry]::Read($Stream, $DiscHeader) | Where-Object Type -eq 'File' | Sort-Object FileOffset
+$list = [GC.FSEntry]::Read($Stream, $DiscHeader) | Where-Object Type -EQ 'File' | Sort-Object FileOffset
 
 if ($ListFiles) {
     switch ($ListFiles) {
@@ -66,10 +66,10 @@ if ($ListFiles) {
 }
 
 elseif ($Extract) {
-    $List = $List | Where-Object 'FullName' -match $Extract
+    $List = $List | Where-Object 'FullName' -Match $Extract
     if ($List) {
         $rom | & { Process {
-                $_.WriteFile((join-path $PSScriptRoot $_.Name))
+                $_.WriteFile((Join-Path $PSScriptRoot $_.Name))
             } }
     }
     else {
@@ -78,21 +78,21 @@ elseif ($Extract) {
 }
 
 else {
-    $list = $list | Where-Object 'Name' -match '^((ura)?zlp_f|zelda2p)\.n64$'
+    $list = $list | Where-Object 'Name' -Match '^((ura)?zlp_f|zelda2p)\.n64$'
     if ($list) {
         $list | & { Process {
                 # Ocarina of Time
                 if ($_.name -eq 'zlp_f.n64') {
-                    $_.WriteFile((join-path $PSScriptRoot 'TLoZ-OoT-GC.z64'))
+                    $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC.z64'))
                 }
                 # Ocarina of Time - Master Quest
                 elseif ($_.name -eq 'urazlp_f.n64') {
-                    $_.WriteFile((join-path $PSScriptRoot 'TLoZ-OoT-MQ-GC.z64'))
+                    $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC.z64'))
                 }
                 
                 # Majoras Mask
                 elseif ($_.name -eq 'zelda2p.n64') {
-                    $_.WriteFile((join-path $PSScriptRoot 'TLoZ-MM-GC.z64'))
+                    $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC.z64'))
                 }
                  
             } }

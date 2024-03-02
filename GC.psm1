@@ -138,7 +138,7 @@ class DiscHeader {
         [void]$Stream.seek(0, 0)
         [void]$Stream.read($buffer, 0, 1088)
         $Magic = [byte[]]@(0xc2, 0x33, 0x9f, 0x3d)
-        if ((Compare-object $buffer[0x001c..0x001f] $Magic)) {
+        if ((Compare-Object $buffer[0x001c..0x001f] $Magic)) {
             Throw "This doesn't seem to be a GameCube Disc! Or wrong endianess for some ungodly reason."
         }
         $Disc = [DiscHeader]$buffer
@@ -203,7 +203,7 @@ class TGCHeader {
 
         [void]$Stream.seek($TGC.FileOffset, 0)
         [void]$Stream.read($buffer, 0, 0x38)
-        if ((Compare-object $buffer[0x0000..0x0003] $Magic)) {
+        if ((Compare-Object $buffer[0x0000..0x0003] $Magic)) {
             Throw "This doesn't seem to be a TGC file! Or wrong endianess for some ungodly reason.`nIf you are sure this a valid file, this is probably missing a TGC header.`nPlease report the name of the ROM this is from and its hash here: https://github.com/Spodi/GCIE-PS/issues .`nDo NOT send or link the file/ROM!"
         }
         $header = [TGCHeader]$buffer
@@ -531,10 +531,10 @@ class FSEntry {
 
     [void]WriteFile([String]$fileOut) {
         if ($this.Type -eq 'Directory') {
-        Throw 'This is a directory. This class only supports extracting files!'
+            Throw 'This is a directory. This class only supports extracting files!'
         }
         $prevDir = [System.IO.Directory]::GetCurrentDirectory()
-        [System.IO.Directory]::SetCurrentDirectory((Get-location))
+        [System.IO.Directory]::SetCurrentDirectory((Get-Location))
 
         if (Test-Path -Path $fileOut -PathType Leaf) {
             Throw "$fileOut already exists."
