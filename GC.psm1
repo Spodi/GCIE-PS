@@ -216,12 +216,12 @@ class TGCHeader {
         return [TGCHeader]::Read($Stream, 0)
     }
 
-    static [Array]ReadFS([FileEntry]$FSEntry) {
+    static [FSEntry[]]ReadFS([FileEntry]$FSEntry) {
         $header = [TGCHeader]::Read($FSEntry.FileStream, $FSEntry.FileOffset)
         return [FSEntry]::Read($header, $FSEntry) 
     }
 
-    static [Array]ReadFS([System.IO.FileInfo]$File) {
+    static [FSEntry[]]ReadFS([System.IO.FileInfo]$File) {
         $Stream = [System.IO.File]::OpenRead($File)
         $header = [TGCHeader]::Read($Stream, 0)
         $Stream.Dispose()
@@ -298,33 +298,33 @@ class FSEntry {
     [string]ToString() {
         return $this.FullName
     }
-    static [Array]Read([System.IO.Filestream]$Stream) {
+    static [FSEntry[]]Read([System.IO.Filestream]$Stream) {
         $Header = [DiscHeader]::Read($Stream)
         return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $null, $null)
     }
-    static [Array]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header) {
+    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header) {
         return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $null)
     }
 
-    static [Array]Read([DiscHeader]$Header) {
+    static [FSEntry[]]Read([DiscHeader]$Header) {
         return [FSEntry]::Read($Header.FileStream, $Header.FSTOffset, $Header.FSTSize, $null, $null)
     }
 
-    static [Array]Read([TGCHeader]$Header) {
+    static [FSEntry[]]Read([TGCHeader]$Header) {
         return [FSEntry]::Read($Header.FileStream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $null)
     }
 
-    static [Array]Read([TGCHeader]$Header, [FSEntry]$ParentFile) {
+    static [FSEntry[]]Read([TGCHeader]$Header, [FileEntry]$ParentFile) {
         return [FSEntry]::Read($Header.FileStream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $ParentFile)
     }
 
-    static [Array]Read([System.IO.Filestream]$Stream, [DiscHeader]$Header) {
+    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [DiscHeader]$Header) {
         return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $null, $null)
     }
-    static [Array]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header, [FSEntry]$ParentFile) {
+    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header, [FileEntry]$ParentFile) {
         return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $ParentFile)
     }
-    static [Array]Read([System.IO.Filestream]$Stream, [uint32]$FSTOffset, [uint32]$FSTSize, [int32]$TGCOffsetShift, [FSEntry]$ParentFile) {
+    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [uint32]$FSTOffset, [uint32]$FSTSize, [int32]$TGCOffsetShift, [FileEntry]$ParentFile) {
         $WasClosed = $false
         if (!$Stream.CanRead) {
             $WasClosed = $true
