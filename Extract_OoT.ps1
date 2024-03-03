@@ -49,7 +49,7 @@ $Stream = [System.IO.File]::OpenRead($fileIn)
 $DiscHeader = [GC.DiscHeader]::Read($Stream)
 Write-Host $DiscHeader.GameCode ' - ' $DiscHeader.GameName
 
-$list = [GC.FSEntry]::Read($Stream, $DiscHeader) | Where-Object Type -EQ 'File' | Sort-Object FileOffset
+$list = [GC.FSEntry]::Read($Stream, $DiscHeader) | & { Process { if ($_ -is [FileEntry]) { $_ } } } | Sort-Object FileOffset
 
 if ($ListFiles) {
     switch ($ListFiles) {
@@ -57,10 +57,10 @@ if ($ListFiles) {
             Write-Output $list 
         }
         'json' {
-            $list | Select-Object FileOffset, Size, Name, FullName | ConvertTo-Json | Out-File FileList.json
+            $list | Select-Object FileOffset, Size, Path, Name | ConvertTo-Json | Out-File FileList.json
         }
         'Text' {
-            ($list | Select-Object FileOffset, Size, Name, FullName | Format-Table | Out-String).Trim() | Out-File FileList.txt
+            ($list | Select-Object FileOffset, Size, Path, Name | Format-Table | Out-String).Trim() | Out-File FileList.txt
         }
     }
 }

@@ -133,16 +133,30 @@ class DiscHeader {
         }
     }
 
+    static [DiscHeader]Read([System.IO.FileInfo]$File) {
+        $Stream = [System.IO.File]::OpenRead($File)
+        $Stream.Dispose()
+        return [DiscHeader]::Read($Stream)
+    }
+
     static [DiscHeader]Read([System.IO.Filestream]$Stream) {
+        $WasClosed = $false
+        if (!$Stream.CanRead) {
+            $WasClosed = $true
+            $Stream = [System.IO.File]::OpenRead($Stream.Name)
+        }
         $buffer = [byte[]]::new(1088)
-        [void]$Stream.seek(0, 0)
-        [void]$Stream.read($buffer, 0, 1088)
+        [void]$Stream.Seek(0, 0)
+        [void]$Stream.Read($buffer, 0, 1088)
         $Magic = [byte[]]@(0xc2, 0x33, 0x9f, 0x3d)
         if ((Compare-Object $buffer[0x001c..0x001f] $Magic)) {
             Throw "This doesn't seem to be a GameCube Disc! Or wrong endianess for some ungodly reason."
         }
         $Disc = [DiscHeader]$buffer
         $Disc.FileStream = $Stream
+        if ($WasClosed) {
+            $Stream.Dispose()
+        }
         return $Disc
     }
 
@@ -195,23 +209,52 @@ class TGCHeader {
         $this.BannerSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0030..0x0033])
         $this.VirtualFileAreaOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0034..0x0037])
     }
+    
+    static [TGCHeader]Read([System.IO.FileInfo]$File) {
+        $Stream = [System.IO.File]::OpenRead($File)
+        $Stream.Dispose()
+        return [TGCHeader]::Read($Stream, 0)
+    }
 
-    static [TGCHeader]Read([System.IO.Filestream]$Stream, [FSEntry]$TGC) {
+    static [Array]ReadFS([FileEntry]$FSEntry) {
+        $header = [TGCHeader]::Read($FSEntry.FileStream, $FSEntry.FileOffset)
+        return [FSEntry]::Read($header, $FSEntry) 
+    }
+
+    static [Array]ReadFS([System.IO.FileInfo]$File) {
+        $Stream = [System.IO.File]::OpenRead($File)
+        $header = [TGCHeader]::Read($Stream, 0)
+        $Stream.Dispose()
+        return [FSEntry]::Read($header) 
+    }
+
+    static [TGCHeader]Read([FileEntry]$FSEntry) {
+        return [TGCHeader]::Read($FSEntry.FileStream, $FSEntry.FileOffset)
+    }
+        
+    static [TGCHeader]Read([System.IO.Filestream]$Stream, [uint32]$FileOffset) {
+        $WasClosed = $false
+        if (!$Stream.CanRead) {
+            $WasClosed = $true
+            $Stream = [System.IO.File]::OpenRead($Stream.Name)
+        }
+
         $Magic = [Byte[]]@(0xae, 0x0f, 0x38, 0xa2)
         $buffer = [byte[]]::new(0x38)
 
-
-        [void]$Stream.seek($TGC.FileOffset, 0)
-        [void]$Stream.read($buffer, 0, 0x38)
+        [void]$Stream.Seek($FileOffset, 0)
+        [void]$Stream.Read($buffer, 0, 0x38)
         if ((Compare-Object $buffer[0x0000..0x0003] $Magic)) {
             Throw "This doesn't seem to be a TGC file! Or wrong endianess for some ungodly reason.`nIf you are sure this a valid file, this is probably missing a TGC header.`nPlease report the name of the ROM this is from and its hash here: https://github.com/Spodi/GCIE-PS/issues .`nDo NOT send or link the file/ROM!"
         }
         $header = [TGCHeader]$buffer
-        $header.OwnOffset = $TGC.FileOffset
+        $header.OwnOffset = $FileOffset
         $header.FileStream = $Stream
-        return $header
         
-
+        if ($WasClosed) {
+            $Stream.Dispose()
+        }
+        return $header
     }
 }
 
@@ -240,244 +283,72 @@ class FSEntryRaw {
     }
 }
 class FSEntry {
-    hidden [System.IO.Filestream] $FileStream
-    [uint32] $Index
-    [FSEntry] $ParentFile
     [FSEntryType] $Type
+    [uint32] $Index
+    [FSEntry] $ParentFile  
+    [string] $RelativePath
     [string] $Path
     [uint32] $NameOffsetIntoStringTable
     [string] $Name
     [string] $FullName
     [uint32] $ParentDirIndex
-    hidden [uint32] $_ParentDirIndex
-    [nullable[uint32]] $NextDirIndex
-    [nullable[uint32]] $FileOffset
-    [int32] $TGCOffsetShift
-    [nullable[uint32]] $Size
-    hidden [FSEntryRaw] $RawData
-
-    static FSEntry() {
-        Update-TypeData -TypeName 'FSEntry' -MemberName 'Type' -MemberType ScriptProperty -Value {
-            return [FSEntryType]$this.RawData.DirectoryFlag
-        } -SecondValue {
-            param($value)
-            $this.RawData.DirectoryFlag = [FSEntryType]$value
-        } -Force
-        
-        Update-TypeData -TypeName 'FSEntry' -MemberName 'NameOffsetIntoStringTable' -MemberType ScriptProperty -Value {
-            [byte[]]$value = [byte[]]::new(1) + $this.RawData.NameOffsetIntoStringTable
-            return [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($value)
-        } -SecondValue {
-            param($value)
-            $buffer = [byte[]]::new(4)
-            [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
-            $this.RawData.NameOffsetIntoStringTable = $buffer[1..3]
-        } -Force
-        
-        Update-TypeData -TypeName 'FSEntry' -MemberName 'FileOffset' -MemberType ScriptProperty -Value {
-            if ($this.Type -eq 'File') {
-                return [nullable[uint32]]([System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex) + $this.TGCOffsetShift)
-            }
-            else {
-                return [nullable[uint32]]$null
-            }
-        } -SecondValue {
-            param($value)
-            if ($this.Type -eq 'File') {
-                $buffer = [byte[]]::new(4)
-                [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, ($value - $this.TGCOffsetShift))
-                $this.RawData.FileOffset_ParentDirIndex = $buffer
-            }
-        } -Force
-        
-        Update-TypeData -TypeName 'FSEntry' -MemberName 'ParentDirIndex' -MemberType ScriptProperty -Value {
-            if ($this.Type -eq 'Directory') {
-                return [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex)
-            }
-            else {
-                return [uint32]$_ParentDirIndex
-            }
-        } -SecondValue {
-            param($value)
-            if ($this.Type -eq 'Directory') {
-                $buffer = [byte[]]::new(4)
-                [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
-                $this.RawData.FileOffset_ParentDirIndex = $buffer
-            }
-            else {
-                [uint32]$this._ParentDirIndex = $value
-            }
-        } -Force
-        
-        Update-TypeData -TypeName 'FSEntry' -MemberName 'Size' -MemberType ScriptProperty -Value {
-            if ($this.Type -eq 'File') {
-                return [nullable[uint32]][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
-            }
-            else {
-                return [nullable[uint32]]$null
-            }
-        } -SecondValue {
-            param($value)
-            if ($this.Type -eq 'File') {
-                $buffer = [byte[]]::new(4)
-                [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
-                $this.RawData.Size_NextDirIndex_NumEntries = $buffer
-            }
-        } -Force
-        
-        Update-TypeData -TypeName 'FSEntry' -MemberName 'NextDirIndex' -MemberType ScriptProperty -Value {
-            if ($this.Type -eq 'Directory') {
-                return [nullable[uint32]][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
-            }
-            else {
-                return [nullable[uint32]]$null
-            }
-        } -SecondValue {
-            param($value)
-            if ($this.Type -eq 'Directory') {
-                $buffer = [byte[]]::new(4)
-                [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
-                $this.RawData.Size_NextDirIndex_NumEntries = $buffer
-            }
-        } -Force
-        
-        Update-TypeData -TypeName 'FSEntry' -MemberName 'FullName' -MemberType ScriptProperty -Value {
-            if ($this.Type -eq 'File') { return $this.ParentFile.FullName + $this.Path + $this.Name }
-            else { return $this.ParentFile.FullName + $this.Path + $this.Name + '/' }
-        } -Force
-    }
-    
-    FSEntry() {
-        $this.RawData = [FSEntryRaw]::new()
-    }
-
-    FSEntry([hashtable]$Properties) {
-        foreach ($Property in $Properties.Keys) {
-            $this.$Property = $Properties.$Property
-        } 
-        if ($null -eq $this.RawData) {
-            $this.RawData = [FSEntryRaw]::new()
-        }
-    }
-
-    FSEntry([Byte[]]$value) {
-        $this.RawData = [FSEntryRaw]::new($value)
-    }
+    [FSEntryRaw] $RawData
+    [System.IO.Filestream] $FileStream
 
     [string]ToString() {
         return $this.FullName
     }
-
-    static [FSEntry[]]Read([System.IO.Filestream]$Stream) {
+    static [Array]Read([System.IO.Filestream]$Stream) {
         $Header = [DiscHeader]::Read($Stream)
-        return [FSEntry]::Read($Stream, $Header, $null)
+        return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $null, $null)
+    }
+    static [Array]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header) {
+        return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $null)
     }
 
-    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header) {
-        return [FSEntry]::Read($Stream, $Header, $null)
+    static [Array]Read([DiscHeader]$Header) {
+        return [FSEntry]::Read($Header.FileStream, $Header.FSTOffset, $Header.FSTSize, $null, $null)
     }
 
-    static [FSEntry[]]Read([DiscHeader]$Header) {
-        return [FSEntry]::Read($Header.FileStream, $Header)
+    static [Array]Read([TGCHeader]$Header) {
+        return [FSEntry]::Read($Header.FileStream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $null)
     }
 
-    static [FSEntry[]]Read([TGCHeader]$Header) {
-        return [FSEntry]::Read($Header.FileStream, $Header, $null)
+    static [Array]Read([TGCHeader]$Header, [FSEntry]$ParentFile) {
+        return [FSEntry]::Read($Header.FileStream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $ParentFile)
     }
 
-    static [FSEntry[]]Read([TGCHeader]$Header, [FSEntry]$ParentFile) {
-        return [FSEntry]::Read($Header.FileStream, $Header, $ParentFile)
+    static [Array]Read([System.IO.Filestream]$Stream, [DiscHeader]$Header) {
+        return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $null, $null)
     }
-
-    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [DiscHeader]$Header) {
-
-        $buffer = [byte[]]::new(0x0C)
-        [void]$Stream.seek($header.FSTOffset, 0)
-        [void]$Stream.read($buffer, 0, 0xC)
-        $root = [PSCustomObject]@{
-            Type       = [FSEntryType]$buffer[0]
-            EntryCount = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$buffer[8..11])
+    static [Array]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header, [FSEntry]$ParentFile) {
+        return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $ParentFile)
+    }
+    static [Array]Read([System.IO.Filestream]$Stream, [uint32]$FSTOffset, [uint32]$FSTSize, [int32]$TGCOffsetShift, [FSEntry]$ParentFile) {
+        $WasClosed = $false
+        if (!$Stream.CanRead) {
+            $WasClosed = $true
+            $Stream = [System.IO.File]::OpenRead($Stream.Name)
         }
+        
+        $buffer = [byte[]]::new(0x0C)
+        [void]$Stream.Seek($FSTOffset, 0)
+        [void]$Stream.Read($buffer, 0, 0xC)
+        $root = [RootEntry]$buffer
         $lastFolder = 0
         $FST = & { for ($i = 1; $i -lt ($root.EntryCount); $i++) {
-                [void]$Stream.read($buffer, 0, 0xC)
+                [void]$Stream.Read($buffer, 0, 0xC)
                 if ([FSEntryType]$buffer[0] -eq 'Directory') {
                     $lastFolder = $i
+                    $Entry = [DirectoryEntry]$buffer   
                 }
-                $Entry = [FSEntry]$buffer
-                $Entry.Index = $i
-                $Entry._ParentDirIndex = $lastFolder
-                $Entry.TGCOffsetShift = $TGCOffsetShift
-                $Entry.FileStream = $Stream
-                $Entry
-            } 
-        }
-
-        # 1st Pass: Getting the names from the String-Table
-        # Funny enough "& {Process { }}"  is MUCH faster then "Foreach-Object { }" and does the same. 
-
-        $StringTableSize = $header.FSTSize - ($header.FSTOffset - $Stream.Position)
-        $FSTStringTable = [byte[]]::new($StringTableSize)
-        [void]$Stream.read($FSTStringTable, 0, $FSTStringTable.Count)
-
-        $FST = $FST | & { Process {
-
-                $name = & {
-                    $i = $_.NameOffsetIntoStringTable
-                    while ($i -lt $FSTStringTable.Count) {
-                        if ($FSTStringTable[$i] -ne 0) {
-                            $FSTStringTable[$i]
-                            $i++
-                        }
-                        else { break }
-                    }
+                else {
+                    $Entry = [FileEntry]$buffer
+                    $Entry.ParentDirIndex = $lastFolder
+                    $Entry.TGCOffsetShift = $TGCOffsetShift
                 }
-                $_.Name = [System.Text.Encoding]::GetEncoding(932).GetString($name) 
-                $_  
-       
-            } } | Group-Object ParentDirIndex | & { Process {
-                # 2nd Pass: Add Paths
-                [System.Collections.ArrayList]$path = @('/')
-                $parent = $_.Group[0]
-                while ($parent.ParentDirIndex -ne 0) {
-                    $parent = $FST[($parent.ParentDirIndex - 1)] # Avoid Where-Object here (slow!). Position in the FST matches the position in the array anyway (root would be [0], but is not in the array, so "-1").
-                    $Path.insert(0, $parent.Name)
-                    $Path.insert(0, '/')             
-                }
-                $_.Group.ForEach('Path', -join $Path)
-                $_.Group  # ungroup things again
-            } } | & { Process {
-                # 3rd Pass: Read any TGC
-                $_
-                $_ | & { Process {
-                        if ($_.Name -match '\.tgc$') {
-                            $header = [TGCHeader]::Read($Stream, $_)
-                            [FSEntry]::Read($Stream, $header, $_)
-                        } 
-                    } }
-            } }
-        return [FSEntry[]]$FST
-    }
-
-    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header, [FSEntry]$ParentFile) {
-        $buffer = [byte[]]::new(0x0C)
-        [void]$Stream.seek($header.FSTOffset, 0)
-        [void]$Stream.read($buffer, 0, 0xC)
-        $root = [PSCustomObject]@{
-            Type       = [FSEntryType]$buffer[0]
-            EntryCount = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$buffer[8..11])
-        }
-        $lastFolder = 0
-        $FST = & { for ($i = 1; $i -lt ($root.EntryCount); $i++) {
-                [void]$Stream.read($buffer, 0, 0xC)
-                if ([FSEntryType]$buffer[0] -eq 'Directory') {
-                    $lastFolder = $i
-                }
-                $Entry = [FSEntry]$buffer
                 $Entry.Index = $i
                 $Entry.ParentFile = $ParentFile
-                $Entry._ParentDirIndex = $lastFolder
-                $Entry.TGCOffsetShift = $TGCOffsetShift
                 $Entry.FileStream = $Stream
                 $Entry
             } 
@@ -486,20 +357,17 @@ class FSEntry {
         # 1st Pass: Getting the names from the String-Table
         # Funny enough "& {Process { }}"  is MUCH faster then "Foreach-Object { }" and does the same. 
 
-        $StringTableSize = $header.FSTSize - ($header.FSTOffset - $Stream.Position)
+        $StringTableSize = $FSTSize - ($FSTOffset - $Stream.Position)
         $FSTStringTable = [byte[]]::new($StringTableSize)
-        [void]$Stream.read($FSTStringTable, 0, $FSTStringTable.Count)
+        [void]$Stream.Read($FSTStringTable, 0, $FSTStringTable.Count)
 
         $FST = $FST | & { Process {
 
                 $name = & {
                     $i = $_.NameOffsetIntoStringTable
-                    while ($i -lt $FSTStringTable.Count) {
-                        if ($FSTStringTable[$i] -ne 0) {
-                            $FSTStringTable[$i]
-                            $i++
-                        }
-                        else { break }
+                    while ($i -lt $FSTStringTable.Count -and $FSTStringTable[$i] -ne 0) {
+                        $FSTStringTable[$i]
+                        $i++
                     }
                 }
                 $_.Name = [System.Text.Encoding]::GetEncoding(932).GetString($name) 
@@ -514,30 +382,86 @@ class FSEntry {
                     $Path.insert(0, $parent.Name)
                     $Path.insert(0, '/')             
                 }
-                $_.Group.ForEach('Path', -join $Path)
+                $_.Group.ForEach('RelativePath', -join $Path)
                 $_.Group  # ungroup things again
             } } | & { Process {
                 # 3rd Pass: Read any TGC
                 $_
                 $_ | & { Process {
                         if ($_.Name -match '\.tgc$') {
-                            $header = [TGCHeader]::Read($Stream, $_)
-                            [FSEntry]::Read($Stream, $header, $_)
+                            [TGCHeader]::ReadFS($_)
                         } 
                     } }
             } }
-        return [FSEntry[]]$FST
+            if ($WasClosed) {
+                $Stream.Dispose()
+            }
+        return $FST
+    }
+
+}
+Update-TypeData -TypeName 'FSEntry' -MemberName 'Type' -MemberType ScriptProperty -Value {
+    return [FSEntryType]$this.RawData.DirectoryFlag
+} -SecondValue {
+    param($value)
+    $this.RawData.DirectoryFlag = [FSEntryType]$value
+} -Force
+Update-TypeData -TypeName 'FSEntry' -MemberName 'NameOffsetIntoStringTable' -MemberType ScriptProperty -Value {
+    [byte[]]$value = [byte[]]::new(1) + $this.RawData.NameOffsetIntoStringTable
+    return [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($value)
+} -SecondValue {
+    param($value)
+    $buffer = [byte[]]::new(4)
+    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
+    $this.RawData.NameOffsetIntoStringTable = $buffer[1..3]
+} -Force
+Update-TypeData -TypeName 'FSEntry' -MemberName 'Path' -MemberType ScriptProperty -Value {
+    return $this.ParentFile.FullName + $this.RelativePath
+}
+Update-TypeData -TypeName 'FSEntry' -DefaultDisplayPropertySet Type, FileOffset, Size, Path, Name
+
+class RootEntry : FSEntry {
+    [uint32] $EntryCount
+
+    RootEntry() {
+    }
+
+
+    RootEntry([byte[]]$value) {
+        $this.RawData = [FSEntryRaw]::new($value)
+    }
+
+}
+Update-TypeData -TypeName 'RootEntry' -MemberName 'EntryCount' -MemberType ScriptProperty -Value {
+    return [uint32][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
+} -SecondValue {
+    param($value)
+    $buffer = [byte[]]::new(4)
+    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
+    $this.RawData.Size_NextDirIndex_NumEntries = $buffer
+} -Force
+
+class FileEntry : FSEntry {
+    [uint32] $FileOffset
+    [int32] $TGCOffsetShift
+    [uint32] $Size
+
+    FileEntry([byte[]]$value) {
+        $this.RawData = [FSEntryRaw]::new($value)
     }
 
     [void]WriteFile([String]$fileOut) {
-        if ($this.Type -eq 'Directory') {
-            Throw 'This is a directory. This class only supports extracting files!'
-        }
         $prevDir = [System.IO.Directory]::GetCurrentDirectory()
         [System.IO.Directory]::SetCurrentDirectory((Get-Location))
 
+
         if (Test-Path -Path $fileOut -PathType Leaf) {
             Throw "$fileOut already exists."
+        }
+        $WasClosed = $false
+        if (!$this.FileStream.CanRead) {
+            $WasClosed = $true
+            $this.FileStream = [System.IO.File]::OpenRead($this.FileStream.Name)
         }
         $destination = [System.IO.Path]::GetDirectoryName($fileOut)
         if ($destination) {
@@ -545,25 +469,73 @@ class FSEntry {
                 New-Item $destination -ItemType Directory | Out-Null
             }
         }
-        $read = $this.FileStream
         $write = [System.IO.File]::OpenWrite($fileOut)
         $buffer = [byte[]]::new(131072)
-        $BytesToRead = $this.size
-        [void]$read.seek($this.FileOffset, 0)
+        $BytesToRead = $this.Size
+        [void]$this.FileStream.Seek($this.FileOffset, 0)
         while ($BytesToRead -gt 0) {
             if ($BytesToRead -lt $buffer.Count) {
-                $n = $read.read($buffer, 0, $BytesToRead)
-                [void]$write.write($buffer, 0, $BytesToRead)
+                $n = $this.FileStream.Read($buffer, 0, $BytesToRead)
+                [void]$write.Write($buffer, 0, $BytesToRead)
             }
             else {
-                $n = $read.read($buffer, 0, $buffer.Count)
-                [void]$write.write($buffer, 0, $buffer.Count)
+                $n = $this.FileStream.Read($buffer, 0, $buffer.Count)
+                [void]$write.Write($buffer, 0, $buffer.Count)
             }
             if ($n -eq 0) { break }
             $BytesToRead = $BytesToRead - $n
         }
         $write.Dispose()
+        if ($WasClosed) {
+            $this.FileStream.Dispose()
+        }
         [System.IO.Directory]::SetCurrentDirectory($prevDir)
     }
 
 }
+Update-TypeData -TypeName 'FileEntry' -MemberName 'FileOffset' -MemberType ScriptProperty -Value {
+    return [uint32]([System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex) + $this.TGCOffsetShift)
+} -SecondValue {
+    param($value)
+    $buffer = [byte[]]::new(4)
+    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, ($value - $this.TGCOffsetShift))
+    $this.RawData.FileOffset_ParentDirIndex = $buffer
+} -Force
+Update-TypeData -TypeName 'FileEntry' -MemberName 'Size' -MemberType ScriptProperty -Value {
+    return [uint32][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
+} -SecondValue {
+    param($value)
+    $buffer = [byte[]]::new(4)
+    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
+    $this.RawData.Size_NextDirIndex_NumEntries = $buffer
+} -Force
+Update-TypeData -TypeName 'FileEntry' -MemberName 'FullName' -MemberType ScriptProperty -Value {
+    return $this.Path + $this.Name
+} -Force
+
+class DirectoryEntry : FSEntry {
+    hidden [uint32] $NextDirIndex
+
+    DirectoryEntry([byte[]]$value) {
+        $this.RawData = [FSEntryRaw]::new($value)
+    }
+}
+Update-TypeData -TypeName 'DirectoryEntry' -MemberName 'ParentDirIndex' -MemberType ScriptProperty -Value {
+    return [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex)
+} -SecondValue {
+    param($value)
+    $buffer = [byte[]]::new(4)
+    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
+    $this.RawData.FileOffset_ParentDirIndex = $buffer
+} -Force
+Update-TypeData -TypeName 'DirectoryEntry' -MemberName 'NextDirIndex' -MemberType ScriptProperty -Value {
+    return [uint32][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
+} -SecondValue {
+    param($value)
+    $buffer = [byte[]]::new(4)
+    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
+    $this.RawData.Size_NextDirIndex_NumEntries = $buffer
+} -Force
+Update-TypeData -TypeName 'DirectoryEntry' -MemberName 'FullName' -MemberType ScriptProperty -Value {
+    return $this.Path + $this.Name + '/'
+} -Force
