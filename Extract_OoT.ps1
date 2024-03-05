@@ -46,10 +46,10 @@ if (!(Test-Path -LiteralPath $fileIn)) {
 }
 
 $Stream = [System.IO.File]::OpenRead($fileIn)
-$DiscHeader = [GC.DiscHeader]::Read($Stream)
-Write-Host $DiscHeader.GameCode ' - ' $DiscHeader.GameName
+$Disc = [GC.Disc]$Stream
+Write-Host $Disc.Header.GameCode ' - ' $Disc.Header.GameName
 
-$list = [GC.FSEntry]::Read($Stream, $DiscHeader) | & { Process { if ($_ -is [FileEntry]) { $_ } } } | Sort-Object FileOffset
+$list = $Disc.GetAllEntries() | & { Process { if ($_ -is [FileEntry]) { $_ } } } | Sort-Object FileOffset
 
 if ($ListFiles) {
     switch ($ListFiles) {
@@ -78,24 +78,31 @@ elseif ($Extract) {
 }
 
 else {
-    $list = $list | Where-Object 'Name' -Match '^((ura)?zlp_f|zelda2p)\.n64$'
     if ($list) {
-        $list | & { Process {
+        $list | ForEach-Object {
                 # Ocarina of Time
                 if ($_.name -eq 'zlp_f.n64') {
-                    $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC.z64'))
+                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC.z64')) }
+                    catch [FileAlreadyExistsException] {
+                        Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                    }
                 }
                 # Ocarina of Time - Master Quest
                 elseif ($_.name -eq 'urazlp_f.n64') {
-                    $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC.z64'))
+                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC.z64')) }
+                    catch [FileAlreadyExistsException] {
+                        Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                    }
                 }
-                
                 # Majoras Mask
                 elseif ($_.name -eq 'zelda2p.n64') {
-                    $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC.z64'))
-                }
-                 
-            } }
+                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC.z64')) }
+                    catch [FileAlreadyExistsException] {
+                        Write-Error -ErrorRecord $_  -ErrorAction 'Continue'
+                    }
+                }  
+            
+        }
     }
     else {
         Write-Host "Couldn't find any PAL OoT or MQ ROM."

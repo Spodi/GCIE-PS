@@ -44,7 +44,13 @@ enum FSEntryType {
     File = 0
     Directory = 1
 }
-
+class FileAlreadyExistsException :  System.IO.IOException {
+    [string]$File
+    FileAlreadyExistsException() : base('File already exists.') { }
+    FileAlreadyExistsException([string]$File) : base("`"$($File)`" already exists.") {
+        $this.File = $File
+    }
+}
 class GameCode {
     [string] $SystemID
     [string] $GameID
@@ -133,6 +139,11 @@ class DiscHeader {
         }
     }
 
+    static [DiscHeader]Read([string]$File) {
+        $Stream = [System.IO.File]::OpenRead($File)
+        $Stream.Dispose()
+        return [DiscHeader]::Read($Stream)
+    }
     static [DiscHeader]Read([System.IO.FileInfo]$File) {
         $Stream = [System.IO.File]::OpenRead($File)
         $Stream.Dispose()
@@ -181,16 +192,6 @@ class TGCHeader {
     [uint32] $VirtualFileAreaOffset
     [int32] $TGCOffsetShift
 
-    static TGCHeader() {
-        Update-TypeData -TypeName 'TGCHeader' -MemberName 'FSTOffset' -MemberType ScriptProperty -Value {
-            return [uint32]$this.OwnOffset + $this.RelativeFSTOffset
-        } -Force
-
-        Update-TypeData -TypeName 'TGCHeader' -MemberName 'TGCOffsetShift' -MemberType ScriptProperty -Value {
-            return [int32](($this.FileAreaOffset - $this.VirtualFileAreaOffset) + $this.OwnOffset)
-        } -Force
-    }
-   
 
     TGCHeader() {}
 
@@ -209,23 +210,12 @@ class TGCHeader {
         $this.BannerSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0030..0x0033])
         $this.VirtualFileAreaOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0034..0x0037])
     }
-    
+
     static [TGCHeader]Read([System.IO.FileInfo]$File) {
         $Stream = [System.IO.File]::OpenRead($File)
         $Stream.Dispose()
         return [TGCHeader]::Read($Stream, 0)
-    }
 
-    static [FSEntry[]]ReadFS([FileEntry]$FSEntry) {
-        $header = [TGCHeader]::Read($FSEntry.FileStream, $FSEntry.FileOffset)
-        return [FSEntry]::Read($header, $FSEntry) 
-    }
-
-    static [FSEntry[]]ReadFS([System.IO.FileInfo]$File) {
-        $Stream = [System.IO.File]::OpenRead($File)
-        $header = [TGCHeader]::Read($Stream, 0)
-        $Stream.Dispose()
-        return [FSEntry]::Read($header) 
     }
 
     static [TGCHeader]Read([FileEntry]$FSEntry) {
@@ -250,13 +240,20 @@ class TGCHeader {
         $header = [TGCHeader]$buffer
         $header.OwnOffset = $FileOffset
         $header.FileStream = $Stream
-        
+
         if ($WasClosed) {
             $Stream.Dispose()
         }
         return $header
     }
 }
+Update-TypeData -TypeName 'TGCHeader' -MemberName 'FSTOffset' -MemberType ScriptProperty -Value {
+    return [uint32]$this.OwnOffset + $this.RelativeFSTOffset
+} -Force
+
+Update-TypeData -TypeName 'TGCHeader' -MemberName 'TGCOffsetShift' -MemberType ScriptProperty -Value {
+    return [int32](($this.FileAreaOffset - $this.VirtualFileAreaOffset) + $this.OwnOffset)
+} -Force
 
 class FSEntryRaw {
     [byte] $DirectoryFlag = 0
@@ -283,6 +280,7 @@ class FSEntryRaw {
     }
 }
 class FSEntry {
+    hidden [System.IO.Filestream] $FileStream
     [FSEntryType] $Type
     [uint32] $Index
     [FSEntry] $ParentFile  
@@ -293,7 +291,7 @@ class FSEntry {
     [string] $FullName
     [uint32] $ParentDirIndex
     [FSEntryRaw] $RawData
-    [System.IO.Filestream] $FileStream
+
 
     [string]ToString() {
         return $this.FullName
@@ -386,16 +384,19 @@ class FSEntry {
                 $_.Group  # ungroup things again
             } } | & { Process {
                 # 3rd Pass: Read any TGC
-                $_
+                
                 $_ | & { Process {
                         if ($_.Name -match '\.tgc$') {
-                            [TGCHeader]::ReadFS($_)
-                        } 
+                            [TGC]$_
+                        }
+                        else {
+                            $_
+                        }
                     } }
             } }
-            if ($WasClosed) {
-                $Stream.Dispose()
-            }
+        if ($WasClosed) {
+            $Stream.Dispose()
+        }
         return $FST
     }
 
@@ -446,17 +447,23 @@ class FileEntry : FSEntry {
     [int32] $TGCOffsetShift
     [uint32] $Size
 
+    FileEntry() {}
+
     FileEntry([byte[]]$value) {
         $this.RawData = [FSEntryRaw]::new($value)
     }
 
     [void]WriteFile([String]$fileOut) {
+        $this.WriteFile($fileOut, $true)
+    }
+
+    [void]WriteFile([String]$fileOut, [bool]$force) {
         $prevDir = [System.IO.Directory]::GetCurrentDirectory()
         [System.IO.Directory]::SetCurrentDirectory((Get-Location))
-
-
-        if (Test-Path -Path $fileOut -PathType Leaf) {
-            Throw "$fileOut already exists."
+     
+        if ((Test-Path -Path $fileOut -PathType Leaf)) {
+            
+            Throw [FileAlreadyExistsException]::new($fileOut)
         }
         $WasClosed = $false
         if (!$this.FileStream.CanRead) {
@@ -469,7 +476,7 @@ class FileEntry : FSEntry {
                 New-Item $destination -ItemType Directory | Out-Null
             }
         }
-        $write = [System.IO.File]::OpenWrite($fileOut)
+        $write = [System.IO.File]::Open($fileOut, 'Create')
         $buffer = [byte[]]::new(131072)
         $BytesToRead = $this.Size
         [void]$this.FileStream.Seek($this.FileOffset, 0)
@@ -539,3 +546,128 @@ Update-TypeData -TypeName 'DirectoryEntry' -MemberName 'NextDirIndex' -MemberTyp
 Update-TypeData -TypeName 'DirectoryEntry' -MemberName 'FullName' -MemberType ScriptProperty -Value {
     return $this.Path + $this.Name + '/'
 } -Force
+
+class TGC : FileEntry {
+    [TGCHeader] $Header
+    [FSEntry[]] $Entries
+
+    TGC([string]$File) {
+        $this.Header = [TGCHeader]::read($file)
+        $this.Entries = [FSEntry]::read($this.Header)
+    }
+
+    TGC([System.IO.FileInfo]$File) {
+        $this.Header = [TGCHeader]::read($file)
+        $this.Entries = [FSEntry]::read($this.Header)
+    }
+
+    TGC([TGCHeader]$Header) {
+        $WasClosed = $false
+        if (!$Header.FileStream.CanRead) {
+            $WasClosed = $true
+            $Header.FileStream = [System.IO.File]::OpenRead($Header.FileStream.Name)
+        }
+
+        $this.Header = $Header
+        $this.Entries = [FSEntry]::read($this.Header)
+
+        if ($WasClosed) {
+            $this.FileStream.Dispose()
+        }
+    }
+
+    TGC([FileEntry]$FSEntry) {
+        $WasClosed = $false
+        if (!$FSEntry.FileStream.CanRead) {
+            $WasClosed = $true
+            $FSEntry.FileStream = [System.IO.File]::OpenRead($FSEntry.FileStream.Name)
+        }
+
+        $this.Header = [TGCHeader]::read($FSEntry)
+        foreach ($Property in ($FSEntry | Get-Member -MemberType Property)) {
+            $this.($Property.Name) = $FSEntry.($Property.Name)
+        }
+        $this.Entries = [FSEntry]::read($this.Header)
+
+        if ($WasClosed) {
+            $this.FileStream.Dispose()
+        }
+    }
+
+    [FSEntry[]]GetAllEntries() {
+        $Files = & {
+            ForEach ($Entry in $this.Entries) {
+                if ($Entry -is [TGC]) {
+                    $Entry.GetAllEntries()
+                }
+                else {
+                    $Entry
+                }
+            }
+        }
+        return $Files
+    }
+}
+
+class Disc {
+    [DiscHeader] $Header
+    [FSEntry[]] $Entries
+
+    Disc([string]$File) {
+        $Stream = [System.IO.File]::OpenRead($File)
+        $this.Header = [DiscHeader]::read($Stream)
+        $this.Entries = [FSEntry]::read($this.Header)
+        $Stream.Dispose()
+    }
+
+    Disc([System.IO.FileInfo]$File) {
+        $Stream = [System.IO.File]::OpenRead($File)
+        $this.Header = [DiscHeader]::read($Stream)
+        $this.Entries = [FSEntry]::read($this.Header)
+        $Stream.Dispose()
+    }
+
+    Disc([System.IO.FileStream]$Stream) {
+        $WasClosed = $false
+        if (!$Stream.CanRead) {
+            $WasClosed = $true
+            $Stream = [System.IO.File]::OpenRead($Stream)
+        }
+
+        $this.Header = [DiscHeader]::read($Stream)
+        $this.Entries = [FSEntry]::read($this.Header)
+
+        if ($WasClosed) {
+            $Stream.Dispose()
+        }
+    }
+
+    Disc([DiscHeader]$Header) {
+        $WasClosed = $false
+        if (!$Header.FileStream.CanRead) {
+            $WasClosed = $true
+            $Header.FileStream = [System.IO.File]::OpenRead($Header.FileStream.Name)
+        }
+
+        $this.Header = $Header
+        $this.Entries = [FSEntry]::read($this.Header)
+
+        if ($WasClosed) {
+            $this.FileStream.Dispose()
+        }
+    }
+
+    [FSEntry[]]GetAllEntries() {
+        $Files = & {
+            ForEach ($Entry in $this.Entries) {
+                if ($Entry -is [TGC]) {
+                    $Entry.GetAllEntries()
+                }
+                else {
+                    $Entry
+                }
+            }
+        }
+        return $Files
+    }
+}
