@@ -286,7 +286,7 @@ elseif ($Extract) {
 }
 
 else {
-    $list = $list | Where-Object 'Name' -Match '^((ura)?zlp_f|zelda2p)\.n64$'
+    $list = $list | Where-Object 'Name' -Match '^((ura)?zl._f|zelda2.)\.n64$'
     if ($list) {
         $list | & { Process {
                 if ($_.name -eq 'zlp_f.n64') {
