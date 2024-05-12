@@ -3,7 +3,7 @@
 Extracts or lists files from an uncompressed GameCube image (uncompressed iso). Trys to extract a PAL OoT or MQ ROM by default.
 
 .NOTES
-GameCube Image Extractor Script v23.12.06
+GameCube Image Extractor Script v24.05.12
     
     MIT License
 
@@ -290,20 +290,18 @@ else {
     if ($list) {
         $list | & { Process {
                 if ($_.name -eq 'zlp_f.n64') {
-                    Split-File $Stream (Join-Path $PSScriptRoot 'TLoZ-OoT-GC.z64') -start $_.FileOffset -size $_.Size
+                    Split-File $Stream (Join-Path $PSScriptRoot 'TLoZ-OoT-GC-PAL.z64') -start $_.FileOffset -size $_.Size
                 }
                 elseif ($_.name -eq 'urazlp_f.n64') {
-                    Split-File $Stream (Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC.z64') -start $_.FileOffset -size $_.Size
+                    Split-File $Stream (Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC-PAL.z64') -start $_.FileOffset -size $_.Size
                 }
-                <#
-        elseif ($_.name -eq 'zelda2p.n64') {
-            Split-File $Stream (join-path $PSScriptRoot 'TLoZ-MM-GC.z64') -start $_.FileOffset -size $_.Size
-        }
-        #>
+                elseif ($_.name -eq 'zelda2e.n64') {
+                    Split-File $Stream (Join-Path $PSScriptRoot 'TLoZ-MM-GC-NTSC.z64') -start $_.FileOffset -size $_.Size
+                }
             } }
     }
     else {
-        Write-Host "Couldn't find any PAL OoT or MQ ROM."
+        Write-Host "Couldn't find any PAL OoT, PAL MQ or NTSC MM ROM."
     }
 }
 
