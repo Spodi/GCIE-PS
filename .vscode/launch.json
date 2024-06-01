@@ -12,6 +12,13 @@
             "args": [
                 "-list object collector.iso"
             ]
+        },
+        {
+            "name": "PowerShell: Trace Script",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "$trace = Trace-Script {. ${file} -list object collector.iso}",
+            "args": []
         }
     ]
 }

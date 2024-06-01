@@ -44,6 +44,7 @@ enum FSEntryType {
     File = 0
     Directory = 1
 }
+
 class FileAlreadyExistsException :  System.IO.IOException {
     [string]$File
     FileAlreadyExistsException() : base('File already exists.') { }
@@ -51,6 +52,48 @@ class FileAlreadyExistsException :  System.IO.IOException {
         $this.File = $File
     }
 }
+
+Class GCBitConverter {
+    static [uint32]ReadUInt32BigEndian([byte[]]$source) {       
+        if ($source.count -ne 4) {
+            Throw 'Source Byte Array must contain exact 4 bytes!'
+        }
+        [byte[]]$value = $source.Clone()
+        if ([System.BitConverter]::IsLittleEndian) {
+            [Array]::Reverse($value)
+        }
+        return [System.BitConverter]::ToUInt32($value, 0)
+    }
+    static [byte[]]WriteUInt32BigEndian([uint32]$source) {
+        $value = [System.BitConverter]::GetBytes($source)
+        if ([System.BitConverter]::IsLittleEndian) {
+            [Array]::Reverse($value)
+        }
+        return $value
+    }
+
+    static [uint32]ReadUInt24BigEndian([byte[]]$source) {       
+        if ($source.count -ne 3) {
+            Throw 'Source Byte Array must contain exact 3 bytes!'
+        }
+        [Byte[]]$value = [byte[]]::new(1) + $source.Clone()
+        if ([System.BitConverter]::IsLittleEndian) {
+            [Array]::Reverse($value)
+        }
+        return [System.BitConverter]::ToUInt32($value, 0)
+    }
+    static [byte[]]WriteUInt24BigEndian([uint32]$source) {
+        if ($source -gt 16777215) {
+            Throw 'Source exceeds the maximum value of 16777215!'
+        }
+        $value = [System.BitConverter]::GetBytes($source)
+        if ([System.BitConverter]::IsLittleEndian) {
+            [Array]::Reverse($value)
+        }
+        return $value[1..3]
+    }
+}
+
 class GameCode {
     [string] $SystemID
     [string] $GameID
@@ -113,15 +156,15 @@ class DiscHeader {
         $this.Unknown1 = $value[0x000a..0x001b]
         $this.DVDMagic = $value[0x001c..0x001f]
         $this.GameName = [System.Text.Encoding]::GetEncoding(932).GetString($value[0x0020..0x03ff]).Trim([char]0)
-        $this.DebugMonitorOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0400..0x0403])
-        $this.DebugMonitorAddress = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0404..0x0407])
+        $this.DebugMonitorOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x0400..0x0403])
+        $this.DebugMonitorAddress = [GCBitConverter]::ReadUInt32BigEndian($value[0x0404..0x0407])
         $this.Unknown2 = $value[0x0408..0x041f]
-        $this.MainExecutableOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0420..0x0423])
-        $this.FSTOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0424..0x0427])
-        $this.FSTSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0428..0x042B])
-        $this.FSTSizeMax = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x042C..0x042F])
-        $this.UserOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0430..0x0433])
-        $this.UserSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0434..0x0437])
+        $this.MainExecutableOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x0420..0x0423])
+        $this.FSTOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x0424..0x0427])
+        $this.FSTSize = [GCBitConverter]::ReadUInt32BigEndian($value[0x0428..0x042B])
+        $this.FSTSizeMax = [GCBitConverter]::ReadUInt32BigEndian($value[0x042C..0x042F])
+        $this.UserOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x0430..0x0433])
+        $this.UserSize = [GCBitConverter]::ReadUInt32BigEndian($value[0x0434..0x0437])
         $this.Unknown3 = $value[0x0438..0x043b]
         $this.Unknown4 = $value[0x043c..0x043f]
     }
@@ -198,17 +241,17 @@ class TGCHeader {
     TGCHeader([byte[]]$value) {
         $this.TGCMagic = $value[0x0000..0x0003]
         $this.Unknown1 = $value[0x0004..0x0007]
-        $this.HeaderSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0008..0x000b])
-        $this.RelativeFSTOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0010..0x0013])
-        $this.FSTSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0014..0x0017])
-        $this.FSTSizeMax = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0018..0x001b])
-        $this.MainExecutableOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x001c..0x001f])
-        $this.MainExecutableSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0020..0x0023])
-        $this.FileAreaOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0024..0x0027])
+        $this.HeaderSize = [GCBitConverter]::ReadUInt32BigEndian($value[0x0008..0x000b])
+        $this.RelativeFSTOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x0010..0x0013])
+        $this.FSTSize = [GCBitConverter]::ReadUInt32BigEndian($value[0x0014..0x0017])
+        $this.FSTSizeMax = [GCBitConverter]::ReadUInt32BigEndian($value[0x0018..0x001b])
+        $this.MainExecutableOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x001c..0x001f])
+        $this.MainExecutableSize = [GCBitConverter]::ReadUInt32BigEndian($value[0x0020..0x0023])
+        $this.FileAreaOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x0024..0x0027])
         $this.Unknown2 = $value[0x0028..0x002b]
-        $this.BannerOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x002c..0x002f])
-        $this.BannerSize = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0030..0x0033])
-        $this.VirtualFileAreaOffset = [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian([byte[]]$value[0x0034..0x0037])
+        $this.BannerOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x002c..0x002f])
+        $this.BannerSize = [GCBitConverter]::ReadUInt32BigEndian($value[0x0030..0x0033])
+        $this.VirtualFileAreaOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x0034..0x0037])
     }
 
     static [TGCHeader]Read([System.IO.FileInfo]$File) {
@@ -408,13 +451,10 @@ Update-TypeData -TypeName 'FSEntry' -MemberName 'Type' -MemberType ScriptPropert
     $this.RawData.DirectoryFlag = [FSEntryType]$value
 } -Force
 Update-TypeData -TypeName 'FSEntry' -MemberName 'NameOffsetIntoStringTable' -MemberType ScriptProperty -Value {
-    [byte[]]$value = [byte[]]::new(1) + $this.RawData.NameOffsetIntoStringTable
-    return [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($value)
+    return [GCBitConverter]::ReadUInt24BigEndian($this.RawData.NameOffsetIntoStringTable)
 } -SecondValue {
     param($value)
-    $buffer = [byte[]]::new(4)
-    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
-    $this.RawData.NameOffsetIntoStringTable = $buffer[1..3]
+    $this.RawData.NameOffsetIntoStringTable = [GCBitConverter]::WriteUInt24BigEndian($value)
 } -Force
 Update-TypeData -TypeName 'FSEntry' -MemberName 'Path' -MemberType ScriptProperty -Value {
     return $this.ParentFile.FullName + $this.RelativePath
@@ -424,22 +464,19 @@ Update-TypeData -TypeName 'FSEntry' -DefaultDisplayPropertySet Type, FileOffset,
 class RootEntry : FSEntry {
     [uint32] $EntryCount
 
-    RootEntry() {
-    }
-
+    RootEntry() {}
 
     RootEntry([byte[]]$value) {
+        # Why does the Profiler (Trace-Script) crash here?
         $this.RawData = [FSEntryRaw]::new($value)
     }
 
 }
 Update-TypeData -TypeName 'RootEntry' -MemberName 'EntryCount' -MemberType ScriptProperty -Value {
-    return [uint32][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
+    return [uint32][GCBitConverter]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
 } -SecondValue {
     param($value)
-    $buffer = [byte[]]::new(4)
-    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
-    $this.RawData.Size_NextDirIndex_NumEntries = $buffer
+    $this.RawData.Size_NextDirIndex_NumEntries = [GCBitConverter]::WriteUInt32BigEndian($value)
 } -Force
 
 class FileEntry : FSEntry {
@@ -501,20 +538,16 @@ class FileEntry : FSEntry {
 
 }
 Update-TypeData -TypeName 'FileEntry' -MemberName 'FileOffset' -MemberType ScriptProperty -Value {
-    return [uint32]([System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex) + $this.TGCOffsetShift)
+    return [uint32]([GCBitConverter]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex) + $this.TGCOffsetShift)
 } -SecondValue {
     param($value)
-    $buffer = [byte[]]::new(4)
-    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, ($value - $this.TGCOffsetShift))
-    $this.RawData.FileOffset_ParentDirIndex = $buffer
+    $this.RawData.FileOffset_ParentDirIndex = [GCBitConverter]::WriteUInt32BigEndian(($value - $this.TGCOffsetShift))
 } -Force
 Update-TypeData -TypeName 'FileEntry' -MemberName 'Size' -MemberType ScriptProperty -Value {
-    return [uint32][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
+    return [uint32][GCBitConverter]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
 } -SecondValue {
     param($value)
-    $buffer = [byte[]]::new(4)
-    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
-    $this.RawData.Size_NextDirIndex_NumEntries = $buffer
+    $this.RawData.Size_NextDirIndex_NumEntries = [GCBitConverter]::WriteUInt32BigEndian($value)
 } -Force
 Update-TypeData -TypeName 'FileEntry' -MemberName 'FullName' -MemberType ScriptProperty -Value {
     return $this.Path + $this.Name
@@ -528,20 +561,16 @@ class DirectoryEntry : FSEntry {
     }
 }
 Update-TypeData -TypeName 'DirectoryEntry' -MemberName 'ParentDirIndex' -MemberType ScriptProperty -Value {
-    return [System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex)
+    return [GCBitConverter]::ReadUInt32BigEndian($this.RawData.FileOffset_ParentDirIndex)
 } -SecondValue {
     param($value)
-    $buffer = [byte[]]::new(4)
-    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
-    $this.RawData.FileOffset_ParentDirIndex = $buffer
+    $this.RawData.FileOffset_ParentDirIndex = [GCBitConverter]::WriteUInt32BigEndian($value)
 } -Force
 Update-TypeData -TypeName 'DirectoryEntry' -MemberName 'NextDirIndex' -MemberType ScriptProperty -Value {
-    return [uint32][System.Buffers.Binary.BinaryPrimitives]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
+    return [uint32][GCBitConverter]::ReadUInt32BigEndian($this.RawData.Size_NextDirIndex_NumEntries)
 } -SecondValue {
     param($value)
-    $buffer = [byte[]]::new(4)
-    [void][System.Buffers.Binary.BinaryPrimitives]::WriteUInt32BigEndian($buffer, $value)
-    $this.RawData.Size_NextDirIndex_NumEntries = $buffer
+    $this.RawData.Size_NextDirIndex_NumEntries = [GCBitConverter]::WriteUInt32BigEndian($value)
 } -Force
 Update-TypeData -TypeName 'DirectoryEntry' -MemberName 'FullName' -MemberType ScriptProperty -Value {
     return $this.Path + $this.Name + '/'
