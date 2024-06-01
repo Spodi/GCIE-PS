@@ -1,6 +1,6 @@
 <#
 .NOTES
-GameCube File System Classes v24.02.29
+GameCube File System Classes v24.06.01
     
     MIT License
 
