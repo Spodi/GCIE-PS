@@ -616,7 +616,7 @@ class TGC : FileEntry {
         foreach ($Property in ($FSEntry | Get-Member -MemberType Property)) {
             $this.($Property.Name) = $FSEntry.($Property.Name)
         }
-        $this.Entries = [FSEntry]::read($this.Header)
+        $this.Entries = [FSEntry]::read($this.Header, $FSEntry)
 
         if ($WasClosed) {
             $this.FileStream.Dispose()
