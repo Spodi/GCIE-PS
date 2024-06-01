@@ -626,11 +626,9 @@ class TGC : FileEntry {
     [FSEntry[]]GetAllEntries() {
         $Files = & {
             ForEach ($Entry in $this.Entries) {
+                $Entry
                 if ($Entry -is [TGC]) {
                     $Entry.GetAllEntries()
-                }
-                else {
-                    $Entry
                 }
             }
         }
@@ -689,11 +687,9 @@ class Disc {
     [FSEntry[]]GetAllEntries() {
         $Files = & {
             ForEach ($Entry in $this.Entries) {
+                $Entry
                 if ($Entry -is [TGC]) {
                     $Entry.GetAllEntries()
-                }
-                else {
-                    $Entry
                 }
             }
         }
