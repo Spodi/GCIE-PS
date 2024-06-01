@@ -1,9 +1,16 @@
 <#
-.SYNOPSIS
-Extracts or lists files from an uncompressed GameCube image (uncompressed iso). Trys to extract a PAL OoT or MQ ROM by default.
+.DESCRIPTION
+Extracts or lists files from an uncompressed GameCube image (uncompressed gcm/iso). As this was originally written for "Harbor Masters 64" ports, it tries to extract a PAL OoT, PAL MQ or NTSC-U MM ROM by default. But it can also be used to extract any raw file from the gcm/iso by name or just list its file system.
+
+Requires you to install .NET and Powershell on MacOS and Linux (untested, but should work).
+
+> [!TIP]
+> Instead of starting the script the usual way, you can also Drag & Drop your rom on the included batch file to kickstart the automatic extraction.
+
+There is also a C# port of this ported by xoascf (aka Amaro): https://github.com/xoascf/GCIE
 
 .NOTES
-GameCube Image Extractor Script v24.02.29
+GameCube Image Extractor Script v24.06.01
     
     MIT License
 
@@ -28,11 +35,11 @@ GameCube Image Extractor Script v24.02.29
     SOFTWARE.
 #>
 
-Using Module .\GC.psm1
+Using Module ./GC.psm1
 
 [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'Default')]
 param (
-    # GameCube image file to extract or list files from (uncompressed iso).
+    # GameCube image file to extract or list files from (uncompressed gcm/iso).
     [Parameter(ParameterSetName = 'Extract', Position = 0, Mandatory)][Parameter(ParameterSetName = 'List', Position = 0, Mandatory)][Parameter(ParameterSetName = 'Default', Position = 0, Mandatory)] [string]$fileIn,
     # Extracts all files where their full name (path + name) matches this Regular Expression.
     [Parameter(ParameterSetName = 'Extract', Position = 1, Mandatory)] [string]$Extract,
@@ -47,7 +54,7 @@ if (!(Test-Path -LiteralPath $fileIn)) {
 
 $Stream = [System.IO.File]::OpenRead($fileIn)
 $Disc = [GC.Disc]$Stream
-Write-Host $Disc.Header.GameCode ' - ' $Disc.Header.GameName
+Write-Host $Disc.ToString()
 
 $list = $Disc.GetAllEntries() | & { Process { if ($_ -is [FileEntry]) { $_ } } } | Sort-Object FileOffset
 
@@ -82,21 +89,21 @@ else {
         $list | ForEach-Object {
                 # Ocarina of Time
                 if ($_.name -eq 'zlp_f.n64') {
-                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC.z64')) }
+                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC-PAL.z64')) }
                     catch [FileAlreadyExistsException] {
                         Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
                     }
                 }
                 # Ocarina of Time - Master Quest
                 elseif ($_.name -eq 'urazlp_f.n64') {
-                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC.z64')) }
+                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC-PAL.z64')) }
                     catch [FileAlreadyExistsException] {
                         Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
                     }
                 }
                 # Majoras Mask
-                elseif ($_.name -eq 'zelda2p.n64') {
-                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC.z64')) }
+                elseif ($_.name -eq 'zelda2e.n64') {
+                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC-NTSCU.z64')) }
                     catch [FileAlreadyExistsException] {
                         Write-Error -ErrorRecord $_  -ErrorAction 'Continue'
                     }
@@ -105,7 +112,7 @@ else {
         }
     }
     else {
-        Write-Host "Couldn't find any PAL OoT or MQ ROM."
+        Write-Host "Couldn't find any PAL OoT, PAL MQ or NTSC-U MM ROM."
     }
 }
 

@@ -182,6 +182,10 @@ class DiscHeader {
         }
     }
 
+    [string]ToString() {
+        return "$($this.GameCode) - $($this.GameName)"
+    }
+
     static [DiscHeader]Read([string]$File) {
         $Stream = [System.IO.File]::OpenRead($File)
         $Stream.Dispose()
@@ -355,17 +359,17 @@ class FSEntry {
         return [FSEntry]::Read($Header.FileStream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $null)
     }
 
-    static [FSEntry[]]Read([TGCHeader]$Header, [FileEntry]$ParentFile) {
+    static [FSEntry[]]Read([TGCHeader]$Header, [FSEntry]$ParentFile) {
         return [FSEntry]::Read($Header.FileStream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $ParentFile)
     }
 
     static [FSEntry[]]Read([System.IO.Filestream]$Stream, [DiscHeader]$Header) {
         return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $null, $null)
     }
-    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header, [FileEntry]$ParentFile) {
+    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [TGCHeader]$Header, [FSEntry]$ParentFile) {
         return [FSEntry]::Read($Stream, $Header.FSTOffset, $Header.FSTSize, $Header.TGCOffsetShift, $ParentFile)
     }
-    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [uint32]$FSTOffset, [uint32]$FSTSize, [int32]$TGCOffsetShift, [FileEntry]$ParentFile) {
+    static [FSEntry[]]Read([System.IO.Filestream]$Stream, [uint32]$FSTOffset, [uint32]$FSTSize, [int32]$TGCOffsetShift, [FSEntry]$ParentFile) {
         $WasClosed = $false
         if (!$Stream.CanRead) {
             $WasClosed = $true
@@ -682,6 +686,10 @@ class Disc {
         if ($WasClosed) {
             $this.FileStream.Dispose()
         }
+    }
+
+    [string]ToString() {
+        return $this.Header.toString()
     }
 
     [FSEntry[]]GetAllEntries() {
