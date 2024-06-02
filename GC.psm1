@@ -25,18 +25,40 @@ GameCube File System Classes v24.06.01
     SOFTWARE.
 #>
 
-# SystemID and RegionCode are probably very incomplete, so they aren't really used.
+# SystemID are very incomplete, so they aren't really used.
 enum SystemID {
-    GameCube = 0x47
-    Promotional = 0x44
-    GBAPlayer = 0x55
+    GameCube = 0x47 #G
+    Promotional = 0x44 #D
+    GBAPlayer = 0x55 #U
 }
 
 enum RegionCode {
-    USA_NTSC = 0x45
-    Europe_PAL = 0x50
-    Japan_NTSC = 0x4a
-    Other_PAL = 0x55
+    All = 0x41 #A
+    Brazil = 0x42 #B
+    China = 0x43 #C
+    Germany = 0x44 #D
+    NorthAmerica = 0x45 #E
+    France = 0x46 #F
+    Gateway_NTSC = 0x47 #G
+    Unknown_H = 0x48 #H
+    Italy = 0x49 #I
+    Japan = 0x4a #J
+    Korea = 0x4b #K
+    Gateway_PAL = 0x4c #L
+    Unknown_M = 0x4d #M
+    Canada = 0x4e #N
+    Unknown_O = 0x4f #O
+    Europe_P = 0x50 #P
+    Unknown_Q = 0x51 #Q
+    Unknown_R = 0x52 #R
+    Spain = 0x53 #S
+    Unknown_T = 0x54 #T
+    Australia = 0x55 #U
+    Unknown_V = 0x56 #V
+    Scandinavia = 0x57 #W
+    Europe_X = 0x58 #X
+    Europe_Y = 0x59 #Y
+    Europe_Z = 0x5a #Z
 }
 
 # Just a little thing to not let me confuse those two.
@@ -97,7 +119,7 @@ Class GCBitConverter {
 class GameCode {
     [string] $SystemID
     [string] $GameID
-    [string] $RegionCode
+    [RegionCode] $RegionCode
 
     GameCode() {
 
@@ -112,11 +134,11 @@ class GameCode {
     GameCode([Byte[]]$value) {
         $this.SystemID = [System.Text.Encoding]::GetEncoding(932).GetString($value[0])
         $this.GameID = [System.Text.Encoding]::GetEncoding(932).GetString($value[1..2])
-        $this.RegionCode = [System.Text.Encoding]::GetEncoding(932).GetString($value[3])
+        $this.RegionCode = $value[3]
     }
 
     [string]ToString() {
-        return $this.SystemID + $this.GameID + $this.RegionCode
+        return $this.SystemID + $this.GameID + [System.Text.Encoding]::GetEncoding(932).GetString($this.RegionCode)
     }
 }
 
@@ -155,7 +177,7 @@ class DiscHeader {
         $this.StreamBufferSize = $value[0x0009]
         $this.Unknown1 = $value[0x000a..0x001b]
         $this.DVDMagic = $value[0x001c..0x001f]
-        $this.GameName = [System.Text.Encoding]::GetEncoding(932).GetString($value[0x0020..0x03ff]).Trim([char]0)
+        $this.GameName = [System.Text.Encoding]::GetEncoding(932).GetString($value[0x0020..0x03ff]).Trim([char]0).Trim()
         $this.DebugMonitorOffset = [GCBitConverter]::ReadUInt32BigEndian($value[0x0400..0x0403])
         $this.DebugMonitorAddress = [GCBitConverter]::ReadUInt32BigEndian($value[0x0404..0x0407])
         $this.Unknown2 = $value[0x0408..0x041f]
@@ -494,17 +516,18 @@ class FileEntry : FSEntry {
         $this.RawData = [FSEntryRaw]::new($value)
     }
 
-    [void]WriteFile([String]$fileOut) {
-        $this.WriteFile($fileOut, $true)
+    [System.IO.FileInfo]WriteFile([String]$fileOut) {
+        return $this.WriteFile($fileOut, $false)
     }
 
-    [void]WriteFile([String]$fileOut, [bool]$force) {
+    [System.IO.FileInfo]WriteFile([String]$fileOut, [bool]$force) {
         $prevDir = [System.IO.Directory]::GetCurrentDirectory()
         [System.IO.Directory]::SetCurrentDirectory((Get-Location))
      
         if ((Test-Path -Path $fileOut -PathType Leaf)) {
-            
-            Throw [FileAlreadyExistsException]::new($fileOut)
+            if (!$force) {
+                Throw [FileAlreadyExistsException]::new($fileOut)
+            }
         }
         $WasClosed = $false
         if (!$this.FileStream.CanRead) {
@@ -537,7 +560,9 @@ class FileEntry : FSEntry {
         if ($WasClosed) {
             $this.FileStream.Dispose()
         }
+        $WrittenFile = [System.IO.FileInfo]$fileOut
         [System.IO.Directory]::SetCurrentDirectory($prevDir)
+        return $WrittenFile
     }
 
 }
