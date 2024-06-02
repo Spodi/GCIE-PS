@@ -23,7 +23,7 @@ Lists all files in the image. "Object" sends the file infos as objects to the pi
 
 ## SYNTAX
 ```
-C:\Users\Spodi\Documents\GitHub\GCIE-PS\Extract_OoT.ps1 [-fileIn] <String>
-C:\Users\Spodi\Documents\GitHub\GCIE-PS\Extract_OoT.ps1 [-fileIn] <String> [-ListFiles] <String>
-C:\Users\Spodi\Documents\GitHub\GCIE-PS\Extract_OoT.ps1 [-fileIn] <String> [-Extract] <String>
+C:\Users\Spodi\Documents\GitHub\GCIE-PS\GCIE-PS.ps1 [-fileIn] <String>
+C:\Users\Spodi\Documents\GitHub\GCIE-PS\GCIE-PS.ps1 [-fileIn] <String> [-ListFiles] <String>
+C:\Users\Spodi\Documents\GitHub\GCIE-PS\GCIE-PS.ps1 [-fileIn] <String> [-Extract] <String>
 ```
