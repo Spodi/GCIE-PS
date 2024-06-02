@@ -36,6 +36,7 @@ GameCube Image Extractor Script v24.06.01
 #>
 
 Using Module ./GC.psm1
+Using Module ./N64.psm1
 
 [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'Default')]
 param (
@@ -54,20 +55,21 @@ if (!(Test-Path -LiteralPath $fileIn)) {
 
 $Stream = [System.IO.File]::OpenRead($fileIn)
 $Disc = [GC.Disc]$Stream
+Write-Host -NoNewline "Input: " -ForegroundColor Cyan
 Write-Host $Disc.ToString()
 
-$list = $Disc.GetAllEntries() | & { Process { if ($_ -is [FileEntry]) { $_ } } } | Sort-Object FileOffset
+$list = $Disc.GetAllEntries() | & { Process { if ($_ -is [FileEntry]) { $_ } } }
 
 if ($ListFiles) {
     switch ($ListFiles) {
         'Object' {
-            Write-Output $list 
+            $list | Sort-Object FileOffset | Write-Output 
         }
         'json' {
-            $list | Select-Object FileOffset, Size, Path, Name | ConvertTo-Json | Out-File FileList.json
+            $list | Select-Object FileOffset, Size, Path, Name | Sort-Object FileOffset | ConvertTo-Json | Out-File FileList.json
         }
         'Text' {
-            ($list | Select-Object FileOffset, Size, Path, Name | Format-Table | Out-String).Trim() | Out-File FileList.txt
+            ($list | Select-Object FileOffset, Size, Path, Name | Sort-Object FileOffset | Format-Table | Out-String).Trim() | Out-File FileList.txt
         }
     }
 }
@@ -76,7 +78,7 @@ elseif ($Extract) {
     $List = $List | Where-Object 'FullName' -Match $Extract
     if ($List) {
         $rom | & { Process {
-                $_.WriteFile((Join-Path $PSScriptRoot $_.Name))
+                $_.WriteFile((Join-Path $PSScriptRoot $_.Name), $true)
             } }
     }
     else {
@@ -86,30 +88,39 @@ elseif ($Extract) {
 
 else {
     if ($list) {
+        Write-Host -NoNewline "Output: " -ForegroundColor Cyan
         $list | ForEach-Object {
                 # Ocarina of Time
                 if ($_.name -eq 'zlp_f.n64') {
-                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC-PAL.z64')) }
+                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC-PAL.z64'), $true) }
                     catch [FileAlreadyExistsException] {
                         Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
                     }
                 }
                 # Ocarina of Time - Master Quest
                 elseif ($_.name -eq 'urazlp_f.n64') {
-                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC-PAL.z64')) }
+                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC-PAL.z64'), $true) }
                     catch [FileAlreadyExistsException] {
                         Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
                     }
                 }
                 # Majoras Mask
                 elseif ($_.name -eq 'zelda2e.n64') {
-                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC-NTSCU.z64')) }
+                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC-NTSCU.z64'), $true) }
                     catch [FileAlreadyExistsException] {
                         Write-Error -ErrorRecord $_  -ErrorAction 'Continue'
                     }
                 }  
             
-        }
+        } | ForEach-Object {
+            $hash = Get-FileHash $_ -Algorithm SHA1
+            $header = [N64.RomHeader]::Read($_)
+            [PSCustomObject]@{
+                Header = $header
+                SHA1 = $hash.Hash
+                Path = $_.FullName
+            }
+        }  | Format-Table -AutoSize
     }
     else {
         Write-Host "Couldn't find any PAL OoT, PAL MQ or NTSC-U MM ROM."
@@ -117,4 +128,5 @@ else {
 }
 
 $Stream.Dispose()
+pause
 Exit

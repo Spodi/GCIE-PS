@@ -10,14 +10,14 @@
             "request": "launch",
             "script": "${file}",
             "args": [
-                "-list object collector.iso"
+                "-list object collectors.iso"
             ]
         },
         {
             "name": "PowerShell: Trace Script",
             "type": "PowerShell",
             "request": "launch",
-            "script": "$trace = Trace-Script {. ${file} -list object collector.iso}",
+            "script": "$trace = Trace-Script {. ${file} -list object collectors.iso}",
             "args": []
         }
     ]

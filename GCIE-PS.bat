@@ -7,9 +7,11 @@ title %~n0
 :: color 17
 if exist "%systemroot%\SysNative\WindowsPowerShell\v1.0\powershell.exe" (
 	echo Starting %systemroot%\SysNative\WindowsPowerShell\v1.0\powershell.exe -NoLogo -ExecutionPolicy Bypass -File "%~dpn0.ps1" %*
+	echo.
 	call %systemroot%\SysNative\WindowsPowerShell\v1.0\powershell.exe -NoLogo -ExecutionPolicy Bypass -File "%~dpn0.ps1" %*
 ) else (
 	echo Starting %systemroot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -ExecutionPolicy Bypass -File "%~dpn0.ps1" %*
+	echo.
 	call %systemroot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -ExecutionPolicy Bypass -File "%~dnp0.ps1" %*
 )
 EXIT /b
