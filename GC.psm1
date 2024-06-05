@@ -524,7 +524,7 @@ class FileEntry : FSEntry {
         $prevDir = [System.IO.Directory]::GetCurrentDirectory()
         [System.IO.Directory]::SetCurrentDirectory((Get-Location))
      
-        if ((Test-Path -Path $fileOut -PathType Leaf)) {
+        if ((Test-Path -LiteralPath $fileOut -PathType Leaf)) {
             if (!$force) {
                 Throw [FileAlreadyExistsException]::new($fileOut)
             }
