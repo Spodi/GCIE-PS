@@ -82,7 +82,7 @@ Class N64BitConverter {
         return $value
     }
 
-    static [uint32]ReadUInt64BigEndian([byte[]]$source) {       
+    static [uint64]ReadUInt64BigEndian([byte[]]$source) {       
         if ($source.count -ne 8) {
             Throw 'Source Byte Array must contain exact 8 bytes!'
         }
@@ -90,9 +90,9 @@ Class N64BitConverter {
         if ([System.BitConverter]::IsLittleEndian) {
             [Array]::Reverse($value)
         }
-        return [System.BitConverter]::ToUInt32($value, 0)
+        return [System.BitConverter]::ToUInt64($value, 0)
     }
-    static [byte[]]WriteUInt64BigEndian([uint32]$source) {
+    static [byte[]]WriteUInt64BigEndian([uint64]$source) {
         if ($source -gt 18446744073709551615) {
             Throw 'Source exceeds the maximum value of 18446744073709551615!'
         }
