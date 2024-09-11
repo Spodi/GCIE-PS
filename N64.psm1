@@ -149,8 +149,8 @@ class LibultraVersion {
 class RomHeader {
     hidden [System.IO.Filestream] $FileStream
     [ValidateCount(0x4, 0x4)][byte[]] $PI_BSD_DOM1_Configuration_Flags # Should be 0x80371240 for official ROMs. This is NOT an indicator for endianess, but flags for the max read speed on the catridge!
-    hidden [uint32] $RawClockRate
-    [uint32] $ClockRate # Should be 0 except for a few selected ROMs.
+    [uint32] $RawClockRate # Should be 0x0000000F except for a few selected ROMs.
+    [uint32] $ClockRate # Should be 0 except for a few selected ROMs. 0 defaults to 45637500 in libultra. (45637500 * 2 = 93750000 Hz)
     [uint32] $BootAdress
     [LibultraVersion] $LibultraVersion
     [uint64] $CheckCode
@@ -217,7 +217,4 @@ class RomHeader {
 }
 Update-TypeData -TypeName 'RomHeader' -MemberName 'ClockRate' -MemberType ScriptProperty -Value {
     return ($this.RawClockRate -band 0xFFFFFFF0) * 0.75
-} -SecondValue {
-    param($value)
-    $this.RawClockRate = $value / 0.75 -bor -bnot 0xFFFFFFF0
 } -Force
