@@ -49,7 +49,7 @@ param (
 )
 
 
-if (!(Test-Path -LiteralPath $fileIn)) {
+if (!(Test-Path -LiteralPath $fileIn -PathType Leaf)) {
     Throw "File `"$fileIn`" not found!"
 }
 
