@@ -35,61 +35,97 @@ GameCube Image Extractor Script v24.06.01
     SOFTWARE.
 #>
 
-Using Module ./GC.psm1
-Using Module ./N64.psm1
+Using Module '.\GC.psm1'
+Using Module '.\N64.psm1'
 
 [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'Default')]
 param (
     # GameCube image file to extract or list files from (uncompressed gcm/iso).
-    [Parameter(ParameterSetName = 'Extract', Position = 0, Mandatory)][Parameter(ParameterSetName = 'List', Position = 0, Mandatory)][Parameter(ParameterSetName = 'Default', Position = 0, Mandatory)] [string]$fileIn,
+    [Parameter(ParameterSetName = 'Extract', Position = 0, Mandatory)]
+    [Parameter(ParameterSetName = 'List', Position = 0, Mandatory)]
+    [Parameter(ParameterSetName = 'Default', Position = 0, Mandatory)]
+    [string]$fileIn,
     # Extracts all files where their full name (path + name) matches this Regular Expression.
     [Parameter(ParameterSetName = 'Extract', Position = 1, Mandatory)] [string]$Extract,
     # Lists all files in the image. "Object" sends the file infos as objects to the pipeline. "Text" and "Json" saves the infos as "FileList.txt" or "FileList.json".
     [Parameter(ParameterSetName = 'List', Position = 1, Mandatory)][ValidateSet('Object', 'Text', 'Json')] [string]$ListFiles
 )
 
-
-if (!(Test-Path -LiteralPath $fileIn -PathType Leaf)) {
-    Throw "File `"$fileIn`" not found!"
+Begin {
+    $erroroccured = $null
 }
+Process {
+    $RSHashes = [powershell]::Create()
+    $RSHashes.Runspace.SessionStateProxy.SetVariable('Root', $PSScriptRoot)
+    [void]$RSHashes.AddScript({
+            if ((Test-Path 'validateHMHash.ps1' -PathType Leaf) -and -not (Test-Path 'HMHashes.json' -PathType Leaf)) {
+                . 'validateHMHash.ps1' -UpdateHashes
+            }
+        })
 
-$Stream = [System.IO.File]::OpenRead($fileIn)
-$Disc = [GC.Disc]$Stream
-Write-Host -NoNewline "Input: " -ForegroundColor Cyan
-Write-Host $Disc.ToString()
+    if (!(Test-Path -LiteralPath $fileIn -PathType Leaf)) {
+        Write-Error "File `"$fileIn`" not found!"
+        return
+    }
 
-$list = $Disc.GetAllEntries() | & { Process { if ($_ -is [FileEntry]) { $_ } } }
+    $RSHashesHandle = $RSHashes.BeginInvoke()
 
-if ($ListFiles) {
-    switch ($ListFiles) {
-        'Object' {
-            $list | Sort-Object FileOffset | Write-Output 
-        }
-        'json' {
-            $list | Select-Object FileOffset, Size, Path, Name | Sort-Object FileOffset | ConvertTo-Json | Out-File FileList.json
-        }
-        'Text' {
+    $fileInfo = [System.IO.FileInfo] $fileIn
+    $Stream = [System.IO.File]::OpenRead($fileIn)
+    try { $Disc = [GC.Disc]$Stream }
+    catch {
+        Write-Error 'Error while reading GC Rom file.'
+        Write-Verbose $_
+        $erroroccured = $true
+        return
+    }
+    Write-Host -NoNewline 'Input: ' -ForegroundColor Cyan
+    [PSCustomObject]@{
+        Name   = $fileInfo.Name
+        Path   = $fileInfo.Directory
+        GC_Header = $Disc.ToString()
+        #SHA1   = (Get-FileHash $fileIn -Algorithm SHA1).Hash
+    } | Format-List
+
+    $list = $Disc.GetAllEntries() | & { Process { if ($_ -is [FileEntry]) { $_ } } }
+
+
+    if ($ListFiles) {
+        switch ($ListFiles) {
+            'Object' {
+                $list | Sort-Object FileOffset | Write-Output 
+            }
+            'json' {
+                $list | Select-Object FileOffset, Size, Path, Name | Sort-Object FileOffset | ConvertTo-Json | Out-File FileList.json
+            }
+            'Text' {
             ($list | Select-Object FileOffset, Size, Path, Name | Sort-Object FileOffset | Format-Table | Out-String).Trim() | Out-File FileList.txt
+            }
         }
     }
-}
 
-elseif ($Extract) {
-    $List = $List | Where-Object 'FullName' -Match $Extract
-    if ($List) {
-        $rom | & { Process {
-                $_.WriteFile((Join-Path $PSScriptRoot $_.Name), $true)
-            } }
+    elseif ($Extract) {
+        $List = $List | Where-Object 'FullName' -Match $Extract
+        if ($List) {
+            $extractedFiles = $List | & { Process {
+                    if ([System.IO.Path]::GetExtension($_.Name) -EQ '.n64') {
+                        $_.WriteFile((Join-Path $PSScriptRoot ([System.IO.Path]::ChangeExtension($_.Name, '.z64'))), $true)
+                    }
+                    else {
+                        $_.WriteFile((Join-Path $PSScriptRoot $_.Name), $true)
+                    }
+                } }
+        }
+        else {
+            Write-Host "Couldn't find any file or path matching the regular expression `"$Extract`"."
+        }
     }
+
     else {
-        Write-Host "Couldn't find any file or path matching the regular expression `"$Extract`"."
-    }
-}
 
-else {
-    if ($list) {
-        Write-Host -NoNewline "Output: " -ForegroundColor Cyan
-        $list | ForEach-Object {
+        if ($list) {
+            Write-Host -NoNewline 'Output: ' -ForegroundColor Cyan
+            $extractedFiles = $list | ForEach-Object {
                 # Ocarina of Time
                 if ($_.name -eq 'zlp_f.n64') {
                     try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC-PAL.z64'), $true) }
@@ -112,21 +148,46 @@ else {
                     }
                 }  
             
-        } | ForEach-Object {
-            $hash = Get-FileHash $_ -Algorithm SHA1
-            $header = [N64.RomHeader]::Read($_)
-            [PSCustomObject]@{
-                Header = $header
-                SHA1 = $hash.Hash
-                Path = $_.FullName
-            }
-        }  | Format-Table -AutoSize
+            } 
+        }
+        else {
+            Write-Host "Couldn't find any PAL OoT, PAL MQ or NTSC-U MM ROM."
+        }
     }
-    else {
-        Write-Host "Couldn't find any PAL OoT, PAL MQ or NTSC-U MM ROM."
+
+    $RSHashes.EndInvoke($RSHashesHandle)
+    $RSHashes.Runspace.Close()
+    $RSHashes.Dispose()
+
+    if ($extractedFiles) {
+        if (Test-Path '.\validateHMHash.ps1' -PathType Leaf) {
+            $extractedFiles | . '.\validateHMHash.ps1' -nopause | Write-Output
+        }
+        else {
+            $extractedFiles | ForEach-Object {
+                if (Test-Path $_ -PathType Leaf) {
+                    $File = [System.IO.FileInfo] $_
+                    try { $header = [N64.RomHeader]::Read($File) }
+                    catch {
+                        $header = $null
+                        Write-Error 'Error while reading N64 Rom file.'
+                        Write-Verbose $_
+                    }
+                 ([PSCustomObject]@{
+                        Name       = $File.Name
+                        Path       = $File.Directory
+                        SHA1       = (Get-FileHash $File -Algorithm SHA1).Hash
+                        N64_Header = $header
+                        HM_Game    = $null
+                        HM_Type    = $null
+                    }) | Write-Output             
+                }       
+            }
+        }
+        Pause
     }
 }
-
-$Stream.Dispose()
-pause
-Exit
+End {
+    if ($erroroccured) { EXIT 1 }
+    EXIT
+}
