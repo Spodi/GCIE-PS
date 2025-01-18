@@ -10,7 +10,7 @@ Requires you to install .NET and Powershell on MacOS and Linux (untested, but sh
 There is also a C# port of this ported by xoascf (aka Amaro): https://github.com/xoascf/GCIE
 
 .NOTES
-GameCube Image Extractor Script v24.06.01
+GameCube Image Extractor - PowerShell Script v24.06.01
     
     MIT License
 
