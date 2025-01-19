@@ -80,9 +80,9 @@ Begin {
             rawFile = '/docs/supportedHashes.json'
         }
         $Hashes = & {
-            Get-Hashes @params -repo 'Shipwright' | Add-Member 'Game' 'SoH' -PassThru
-            Get-Hashes @params -repo '2ship2harkinian' | Add-Member 'Game' '2S2H' -PassThru
-            Get-Hashes @params -repo 'Starship' | Add-Member 'Game' 'Starship' -PassThru
+            Get-Hashes @params -repo 'Shipwright' | Add-Member 'Game' 'SoH' -PassThru -ErrorAction SilentlyContinue
+            Get-Hashes @params -repo '2ship2harkinian' | Add-Member 'Game' '2S2H' -PassThru -ErrorAction SilentlyContinue
+            Get-Hashes @params -repo 'Starship' | Add-Member 'Game' 'Starship' -PassThru -ErrorAction SilentlyContinue
         }
         if ($Hashes) {
             $Hashes | ConvertTo-Json | Out-File 'HMHashes.json'

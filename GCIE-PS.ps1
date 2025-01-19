@@ -163,7 +163,7 @@ Process {
 
     if ($extractedFiles) {
         if (Test-Path '.\validateHMHash.ps1' -PathType Leaf) {
-            $extractedFiles | . '.\validateHMHash.ps1' -nopause | Write-Output
+            $extractedFiles | & '.\validateHMHash.ps1' -nopause | Write-Output
         }
         else {
             $extractedFiles | ForEach-Object {
