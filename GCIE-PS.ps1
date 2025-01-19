@@ -10,7 +10,7 @@ Requires you to install .NET and Powershell on MacOS and Linux (untested, but sh
 There is also a C# port of this ported by xoascf (aka Amaro): https://github.com/xoascf/GCIE
 
 .NOTES
-GameCube Image Extractor - PowerShell Script v24.06.01
+GameCube Image Extractor - PowerShell Script v25.01.19
     
     MIT License
 
@@ -48,7 +48,9 @@ param (
     # Extracts all files where their full name (path + name) matches this Regular Expression.
     [Parameter(ParameterSetName = 'Extract', Position = 1, Mandatory)] [string]$Extract,
     # Lists all files in the image. "Object" sends the file infos as objects to the pipeline. "Text" and "Json" saves the infos as "FileList.txt" or "FileList.json".
-    [Parameter(ParameterSetName = 'List', Position = 1, Mandatory)][ValidateSet('Object', 'Text', 'Json')] [string]$ListFiles
+    [Parameter(ParameterSetName = 'List', Position = 1, Mandatory)][ValidateSet('Object', 'Text', 'Json')] [string]$ListFiles,
+    # Does not pause to keep the console open after extraction (useful for automation).
+    [Parameter(ParameterSetName = 'Default')] [Parameter(ParameterSetName = 'Extract')] [switch] $nopause
 )
 
 Begin {
@@ -79,15 +81,16 @@ Process {
         $erroroccured = $true
         return
     }
-    Write-Host -NoNewline 'Input: ' -ForegroundColor Cyan
-    [PSCustomObject]@{
-        Name   = $fileInfo.Name
-        Path   = $fileInfo.Directory
+    Write-Host '------ Input: ------' -ForegroundColor Cyan
+    ([PSCustomObject]@{
+        Name      = $fileInfo.Name
+        Path      = $fileInfo.Directory
         GC_Header = $Disc.ToString()
         #SHA1   = (Get-FileHash $fileIn -Algorithm SHA1).Hash
-    } | Format-List
+    } | Format-List | Out-String).Trim() | Out-Host
 
     $list = $Disc.GetAllEntries() | & { Process { if ($_ -is [FileEntry]) { $_ } } }
+    Write-Host '--------------------' -ForegroundColor Cyan
 
 
     if ($ListFiles) {
@@ -124,7 +127,6 @@ Process {
     else {
 
         if ($list) {
-            Write-Host -NoNewline 'Output: ' -ForegroundColor Cyan
             $extractedFiles = $list | ForEach-Object {
                 # Ocarina of Time
                 if ($_.name -eq 'zlp_f.n64') {
@@ -166,12 +168,14 @@ Process {
         else {
             $extractedFiles | ForEach-Object {
                 if (Test-Path $_ -PathType Leaf) {
+                    $header = $null
                     $File = [System.IO.FileInfo] $_
-                    try { $header = [N64.RomHeader]::Read($File) }
-                    catch {
-                        $header = $null
-                        Write-Error 'Error while reading N64 Rom file.'
-                        Write-Verbose $_
+                    if ($_.Extension -EQ '.z64') {     
+                        try { $header = [N64.RomHeader]::Read($File) }
+                        catch {
+                            Write-Error 'Error while reading N64 Rom file.'
+                            Write-Verbose $_
+                        }
                     }
                  ([PSCustomObject]@{
                         Name       = $File.Name
@@ -184,7 +188,9 @@ Process {
                 }       
             }
         }
-        Pause
+        if (!$nopause) {
+            Pause
+        }
     }
 }
 End {
