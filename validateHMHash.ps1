@@ -15,6 +15,8 @@ Begin {
             [Parameter(Mandatory)] [String] $repo,
             [Parameter(Mandatory)] [String] $rawFile
         )
+        $prevProg = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
         $Remaining = ((Invoke-WebRequest -Uri 'https://api.github.com/rate_limit').Content | ConvertFrom-Json).resources.core.remaining
     
         if ($Remaining -ge 2) {
@@ -43,6 +45,7 @@ Begin {
             }
         }
         return $content
+        $ProgressPreference = $prevProg
     }
 
     function Get-HMHashes {
