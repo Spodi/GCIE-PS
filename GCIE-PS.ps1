@@ -10,7 +10,7 @@ Requires you to install .NET and Powershell on MacOS and Linux (untested, but sh
 There is also a C# port of this ported by xoascf (aka Amaro): https://github.com/xoascf/GCIE
 
 .NOTES
-GameCube Image Extractor - PowerShell Script v25.01.19
+GameCube Image Extractor - PowerShell Script v25.04.02
     
     MIT License
 
@@ -127,30 +127,85 @@ Process {
     else {
 
         if ($list) {
-            $extractedFiles = $list | ForEach-Object {
-                # Ocarina of Time
-                if ($_.name -eq 'zlp_f.n64') {
-                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC-PAL.z64'), $true) }
-                    catch [FileAlreadyExistsException] {
-                        Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+            $extractedFiles = & {
+                switch ($list) {
+
+                    { $_.name -eq 'zlp_f.n64' } {
+                        # Ocarina of Time EU
+                        try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC-EU.z64'), $true) }
+                        catch [FileAlreadyExistsException] {
+                            Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                        }
                     }
-                }
-                # Ocarina of Time - Master Quest
-                elseif ($_.name -eq 'urazlp_f.n64') {
-                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC-PAL.z64'), $true) }
-                    catch [FileAlreadyExistsException] {
-                        Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                
+                    { $_.name -eq 'urazlp_f.n64' } {
+                        # Ocarina of Time - Master Quest EU
+                        try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC-EU.z64'), $true) }
+                        catch [FileAlreadyExistsException] {
+                            Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                        }
                     }
-                }
-                # Majoras Mask
-                elseif ($_.name -eq 'zelda2e.n64') {
-                    try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC-NTSCU.z64'), $true) }
-                    catch [FileAlreadyExistsException] {
-                        Write-Error -ErrorRecord $_  -ErrorAction 'Continue'
+
+                    { $_.name -eq 'zle_f.n64' } {
+                        # Ocarina of Time US
+                        try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC-US.z64'), $true) }
+                        catch [FileAlreadyExistsException] {
+                            Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                        }
                     }
-                }  
-            
-            } 
+                
+                    { $_.name -eq 'urazle_f.n64' } {
+                        # Ocarina of Time - Master Quest US
+                        try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC-US.z64'), $true) }
+                        catch [FileAlreadyExistsException] {
+                            Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                        }
+                    }
+
+                    { $_.name -eq 'zlj_f.n64' } {
+                        # Ocarina of Time JP
+                        try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC-JP.z64'), $true) }
+                        catch [FileAlreadyExistsException] {
+                            Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                        }
+                    }
+                
+                    { $_.name -eq 'urazlj_f.n64' } {
+                        # Ocarina of Time - Master Quest JP
+                        try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-MQ-GC-JP.z64'), $true) }
+                        catch [FileAlreadyExistsException] {
+                            Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                        }
+                    }
+
+                    { $_.name -eq '120903_zelda.n64' } {
+                        # Ocarina of Time Collectors Edition JP
+                        try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-OoT-GC-CE-JP.z64'), $true) }
+                        catch [FileAlreadyExistsException] {
+                            Write-Error -ErrorRecord $_ -ErrorAction 'Continue'
+                        }
+                    }
+                
+                
+
+                    { $_.name -eq 'zelda2e.n64' } {
+                        # Majoras Mask US
+                        try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC-US.z64'), $true) }
+                        catch [FileAlreadyExistsException] {
+                            Write-Error -ErrorRecord $_  -ErrorAction 'Continue'
+                        }
+                    }
+
+                    { $_.name -eq 'zelda2e.n64' } {
+                        # Majoras Mask US
+                        try { $_.WriteFile((Join-Path $PSScriptRoot 'TLoZ-MM-GC-US.z64'), $true) }
+                        catch [FileAlreadyExistsException] {
+                            Write-Error -ErrorRecord $_  -ErrorAction 'Continue'
+                        }
+                    }
+
+                } 
+            }
         }
         else {
             Write-Host "Couldn't find any PAL OoT, PAL MQ or NTSC-U MM ROM."
