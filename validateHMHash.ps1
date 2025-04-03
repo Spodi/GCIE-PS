@@ -1,6 +1,6 @@
 <#
 .NOTES
-HM Hash Validator v25.01.19
+HM Hash Validator v25.04.04
     
     MIT License
 
@@ -29,11 +29,112 @@ Using Module '.\N64.psm1'
 [CmdletBinding(PositionalBinding = $true)]
 param (
     [Parameter(ParameterSetName = 'Default', Mandatory, ValueFromPipeline, Position = 0, ValueFromRemainingArguments)] [System.IO.FileInfo[]] $fileIn,
-    [Parameter(ParameterSetName = 'Default')][Parameter(ParameterSetName = 'Update', Mandatory)] [switch] $UpdateHashes,
     [Parameter(ParameterSetName = 'Default')] [switch] $nopause
 )
 
 Begin {
+    function Invoke-GitHubRestRequest {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory, ValueFromPipeline)] [string] $Uri
+        )
+        class GitHub_RateLimits {
+            [int]$remaining = 60
+            [DateTimeOffset]$reset
+            [DateTimeOffset]$retry
+            [DateTimeOffset]$next
+        }
+        Update-TypeData -TypeName 'GitHub_RateLimits' -MemberName 'next' -MemberType ScriptProperty -Value {
+            if ($this.remaining -gt 0) {
+                $next = $this.retry
+            }
+            else {
+                $next = (@($this.reset, $this.retry) | Measure-Object -Maximum).Maximum
+            }
+            return [DateTimeOffset]$next
+        } -Force
+
+        $prevProg = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        $rates = [GitHub_RateLimits]::new()
+    
+        if (Test-Path -LiteralPath 'GitHub_RateLimits.json' -PathType Leaf) {
+            [GitHub_RateLimits]$rates = Get-Content 'GitHub_RateLimits.json' | ConvertFrom-Json
+        }
+        else {
+            $rates | Select-Object * -ExcludeProperty 'next' | ConvertTo-Json | Out-File 'GitHub_RateLimits.json'
+        }
+        $now = [DateTimeOffset]::('now')
+        if ($rates.remaining -le 0) {
+            $nextTimespan = '{0:dd}d:{0:hh}h:{0:mm}m:{0:ss}s' -f ($rates.next - $now)
+            $ErrorString = "GitHub API rate limit exceeded. Try again in $nextTimespan ($($rates.next.ToLocalTime().toString()))."
+            Write-Error $ErrorString
+            $ProgressPreference = $prevProg
+            return
+        }
+        elseif ($rates.next -ge $now) {
+            $nextTimespan = '{0:dd}d:{0:hh}h:{0:mm}m:{0:ss}s' -f ($rates.next - $now)
+            $ErrorString = "GitHub API requested a wait. Try again in $nextTimespan ($($rates.next.ToLocalTime().toString()))."
+            Write-Error $ErrorString
+            $ProgressPreference = $prevProg
+            return
+        }
+    
+        try {
+            $request = Invoke-WebRequest -Uri $Uri
+            if ($request.Headers.ContainsKey('x-ratelimit-remaining')) {
+                $rates.remaining = $request.Headers['x-ratelimit-remaining']
+            }
+            if ($request.Headers.ContainsKey('x-ratelimit-reset')) {
+                $rates.reset = ([datetimeoffset] '1970-01-01Z').AddSeconds($request.Headers['x-ratelimit-reset'])
+            }
+            if ($request.Headers.ContainsKey('retry-after')) {
+                $rates.retry = ([DateTimeOffset]$request.Headers['date']).AddSeconds($request.Headers['retry-after'])
+            }
+            $RequestError = 0
+        }
+        catch [System.Net.WebException] {
+            if ($_.Exception.Response.Headers['x-ratelimit-remaining']) {
+                $rates.remaining = $_.Exception.Response.Headers['x-ratelimit-remaining']
+            }
+            if ($_.Exception.Response.Headers['x-ratelimit-reset']) {
+                $rates.reset = ([datetimeoffset] '1970-01-01Z').AddSeconds($_.Exception.Response.Headers['x-ratelimit-reset'])
+            }
+            if ($_.Exception.Response.Headers['retry-after']) {
+                $rates.retry = ([DateTimeOffset]$_.Exception.Response.Headers['date']).AddSeconds($_.Exception.Response.Headers['retry-after'])
+            }
+            else {
+                $rates.retry = ([DateTimeOffset]$_.Exception.Response.Headers['date']).AddSeconds(60)
+            }
+            if ($_.Exception.Response.StatusCode.value__) {
+                $RequestError = $_.Exception.Response.StatusCode.value__
+                if (($RequestError -eq 403 -or $RequestError -eq 429) -and $rates.remaining -le 0) {
+                    $rates.remaining--
+                }
+            }
+            else { $RequestError = $_ }
+        }
+    
+        $rates | Select-Object * -ExcludeProperty 'next' | ConvertTo-Json | Out-File 'GitHub_RateLimits.json'
+    
+        if ($RequestError) {
+            if ($rates.remaining -lt 0) {
+                $nextTimespan = '{0:dd}d:{0:hh}h:{0:mm}m:{0:ss}s' -f ($rates.next - [DateTimeOffset]::('now'))
+                $ErrorString = "GitHub API rate limit exceeded. Try again in $nextTimespan ($($rates.next.ToLocalTime().toString()))."
+                Write-Error $ErrorString
+                $ProgressPreference = $prevProg
+                return
+            }
+            else {
+                Write-Error $RequestError
+                $ProgressPreference = $prevProg
+                return
+            }
+        }
+        $ProgressPreference = $prevProg
+        return $request.Content | ConvertFrom-Json | Add-Member -NotePropertyName 'GhRemainingRate' -NotePropertyValue $rates.remaining -PassThru
+    }
+
     function Get-Hashes {
         [CmdletBinding()]
         param (
@@ -43,35 +144,35 @@ Begin {
         )
         $prevProg = $ProgressPreference
         $ProgressPreference = 'SilentlyContinue'
-        $Remaining = ((Invoke-WebRequest -Uri 'https://api.github.com/rate_limit').Content | ConvertFrom-Json).resources.core.remaining
-    
-        if ($Remaining -ge 2) {
-            $latestTag = ((Invoke-WebRequest -Uri ('https://api.github.com/repos/' + $owner + '/' + $repo + '/releases/latest')).Content | ConvertFrom-Json).tag_name
-            $request = Invoke-WebRequest -Uri ('https://api.github.com/repos/' + $owner + '/' + $repo + '/tags')
-            $Remaining = $request.Headers['X-RateLimit-Remaining']
-            $CommitSha = (($request.Content | ConvertFrom-Json) | Where-Object name -EQ $latestTag).commit.sha
+
+        try {
+            $latestTag = (Invoke-GitHubRestRequest -Uri ('https://api.github.com/repos/' + $owner + '/' + $repo + '/releases/latest') -ErrorAction Stop).tag_name
+            $request = Invoke-GitHubRestRequest -Uri ('https://api.github.com/repos/' + $owner + '/' + $repo + '/tags') -ErrorAction Stop
+            $CommitSha = ($request | Where-Object name -EQ $latestTag).commit.sha
             try { $content = ((Invoke-WebRequest -Uri ('https://raw.githubusercontent.com/' + $owner + '/' + $repo + '/' + $CommitSha + $rawFile)).Content | ConvertFrom-Json) | & { Process { Add-Member -InputObject $_ 'Version' $latestTag -PassThru } } }
             catch { }
         }
+        catch {
+            Write-Error $_
+            $ProgressPreference = $prevProg
+            return
+        }
+
         if (!$content) {
-            if ($Remaining -ge 1) {
-                $defaultBranch = ((Invoke-WebRequest -Uri ('https://api.github.com/repos/' + $owner + '/' + $repo)).Content | ConvertFrom-Json).default_branch
+            Write-Waring 'Could not find compatible hashes for latest release. Falling back to latest default branch.'
+            try {
+                $defaultBranch = (Invoke-GitHubRestRequest -Uri ('https://api.github.com/repos/' + $owner + '/' + $repo)).default_branch
                 try { $content = ((Invoke-WebRequest -Uri ('https://raw.githubusercontent.com/' + $owner + '/' + $repo + '/' + $defaultBranch + $rawFile)).Content | ConvertFrom-Json) | & { Process { Add-Member -InputObject $_ 'Version' $defaultBranch -PassThru } } }        
                 catch { }
             }
-            else {
-                # Basically bruteforce
-                $BranchNames = @('main', 'develop')
-                $i = 0
-                while (!$content -and $i -lt $BranchNames.Count) {
-                    try { $content = ((Invoke-WebRequest -Uri ('https://raw.githubusercontent.com/' + $owner + '/' + $repo + '/' + $BranchNames[$i] + $rawFile)).Content | ConvertFrom-Json) | & { Process { Add-Member -InputObject $_ 'Version' $BranchNames[$i] -PassThru } } }
-                    catch { }
-                    $i++
-                }
+            catch {
+                Write-Error $_
+                $ProgressPreference = $prevProg
+                return
             }
         }
-        return $content
         $ProgressPreference = $prevProg
+        return $content
     }
 
     function Get-HMHashes {
@@ -84,27 +185,12 @@ Begin {
             Get-Hashes @params -repo '2ship2harkinian' | Add-Member 'Game' '2S2H' -PassThru -ErrorAction SilentlyContinue
             Get-Hashes @params -repo 'Starship' | Add-Member 'Game' 'Starship' -PassThru -ErrorAction SilentlyContinue
         }
-        if ($Hashes) {
-            $Hashes | ConvertTo-Json | Out-File 'HMHashes.json'
-            return $true
-        }
-        else {
-            return $false
-        }
-    }
-    if (Test-Path -LiteralPath 'HMHashes.json') {
-        $HMhashes = Get-Content -LiteralPath 'HMHashes.json' | ConvertFrom-Json
+        return $Hashes
     }
 
-    If ($UpdateHashes -OR !$HMhashes) {
-        $HMhashes = $null
-        if (!(Get-HMHashes)) {
-            Write-Warning 'Could not get any compatible sha1 hashes from GitHub! (No network connection?)'
-        }
-
-        if (Test-Path -LiteralPath 'HMHashes.json') {
-            $HMhashes = Get-Content -LiteralPath 'HMHashes.json' | ConvertFrom-Json
-        }
+    $HMhashes = Get-HMHashes
+    if (!$HMhashes) {
+        Write-Warning 'Could not get any compatible sha1 hashes from GitHub!'
     }
 }
 

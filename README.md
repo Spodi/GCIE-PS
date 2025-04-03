@@ -1,6 +1,4 @@
 # GameCube Image Extractor Script for PowerShell
-> [!WARNING]
-> Your extracted ROM might show as incompatible, even when supported, due to cached data. Currently you need to delete `HMHashes.json` manually (or tell the validation script to update), when there is a new version of a supported HM Port. 
 ## DESCRIPTION
 Extracts or lists files from an uncompressed GameCube image (uncompressed gcm/iso). As this was originally written for "Harbor Masters 64" ports, it tries to extract a PAL OoT, PAL MQ or NTSC-U MM ROM by default. But it can also be used to extract any raw file from the gcm/iso by name or just list its file system.
 
