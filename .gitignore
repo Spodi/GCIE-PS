@@ -402,3 +402,4 @@ FodyWeavers.xsd
 *.iso
 *.z64
 HMHashes.json
+GitHub_RateLimits.json

@@ -116,7 +116,7 @@ Process {
         if (Test-Path $File -PathType Leaf) {
             $header = $null
             $File = [System.IO.FileInfo] $File
-            if ($_.Extension -EQ '.z64') {     
+            if ($File.Extension -EQ '.z64') {     
                 try { $header = [N64.RomHeader]::Read($File) }
                 catch {
                     Write-Error 'Error while reading N64 Rom file.'

@@ -10,7 +10,7 @@ Requires you to install .NET and Powershell on MacOS and Linux (untested, but sh
 There is also a C# port of this ported by xoascf (aka Amaro): https://github.com/xoascf/GCIE
 
 .NOTES
-GameCube Image Extractor - PowerShell Script v25.04.02
+GameCube Image Extractor - PowerShell Script v25.04.04
     
     MIT License
 
@@ -225,7 +225,7 @@ Process {
                 if (Test-Path $_ -PathType Leaf) {
                     $header = $null
                     $File = [System.IO.FileInfo] $_
-                    if ($_.Extension -EQ '.z64') {     
+                    if ($File.Extension -EQ '.z64') {     
                         try { $header = [N64.RomHeader]::Read($File) }
                         catch {
                             Write-Error 'Error while reading N64 Rom file.'
