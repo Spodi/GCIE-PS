@@ -65,14 +65,14 @@ Begin {
             $rates | Select-Object * -ExcludeProperty 'next' | ConvertTo-Json | Out-File 'GitHub_RateLimits.json'
         }
         $now = [DateTimeOffset]::('now')
-        if ($rates.remaining -le 0) {
+        if ($rates.remaining -le 0 -and $rates.next -gt $now) {
             $nextTimespan = '{0:dd}d:{0:hh}h:{0:mm}m:{0:ss}s' -f ($rates.next - $now)
             $ErrorString = "GitHub API rate limit exceeded. Try again in $nextTimespan ($($rates.next.ToLocalTime().toString()))."
             Write-Error $ErrorString
             $ProgressPreference = $prevProg
             return
         }
-        elseif ($rates.next -ge $now) {
+        elseif ($rates.next -gt $now) {
             $nextTimespan = '{0:dd}d:{0:hh}h:{0:mm}m:{0:ss}s' -f ($rates.next - $now)
             $ErrorString = "GitHub API requested a wait. Try again in $nextTimespan ($($rates.next.ToLocalTime().toString()))."
             Write-Error $ErrorString
@@ -89,7 +89,10 @@ Begin {
                 $rates.reset = ([datetimeoffset] '1970-01-01Z').AddSeconds($request.Headers['x-ratelimit-reset'])
             }
             if ($request.Headers.ContainsKey('retry-after')) {
-                $rates.retry = ([DateTimeOffset]$request.Headers['date']).AddSeconds($request.Headers['retry-after'])
+                $rates.retry = $now.AddSeconds($request.Headers['retry-after'])
+            }
+            else {
+                $rates.retry = ($now)
             }
             $RequestError = 0
         }
@@ -101,10 +104,10 @@ Begin {
                 $rates.reset = ([datetimeoffset] '1970-01-01Z').AddSeconds($_.Exception.Response.Headers['x-ratelimit-reset'])
             }
             if ($_.Exception.Response.Headers['retry-after']) {
-                $rates.retry = ([DateTimeOffset]$_.Exception.Response.Headers['date']).AddSeconds($_.Exception.Response.Headers['retry-after'])
+                $rates.retry = $now.AddSeconds($_.Exception.Response.Headers['retry-after'])
             }
             else {
-                $rates.retry = ([DateTimeOffset]$_.Exception.Response.Headers['date']).AddSeconds(60)
+                $rates.retry = $now.AddSeconds(60)
             }
             if ($_.Exception.Response.StatusCode.value__) {
                 $RequestError = $_.Exception.Response.StatusCode.value__
@@ -159,9 +162,9 @@ Begin {
         }
 
         if (!$content) {
-            Write-Waring 'Could not find compatible hashes for latest release. Falling back to latest default branch.'
+            Write-Warning 'Could not find compatible hashes for latest release. Falling back to latest default branch.'
             try {
-                $defaultBranch = (Invoke-GitHubRestRequest -Uri ('https://api.github.com/repos/' + $owner + '/' + $repo)).default_branch
+                $defaultBranch = (Invoke-GitHubRestRequest -Uri ('https://api.github.com/repos/' + $owner + '/' + $repo) -ErrorAction Stop).default_branch
                 try { $content = ((Invoke-WebRequest -Uri ('https://raw.githubusercontent.com/' + $owner + '/' + $repo + '/' + $defaultBranch + $rawFile)).Content | ConvertFrom-Json) | & { Process { Add-Member -InputObject $_ 'Version' $defaultBranch -PassThru } } }        
                 catch { }
             }
@@ -176,6 +179,14 @@ Begin {
     }
 
     function Get-HMHashes {
+        if (Test-Path -LiteralPath 'HMHashes.json') {
+            $Data = Get-Content -LiteralPath 'HMHashes.json' | ConvertFrom-Json
+        }
+        $now = [DateTimeOffset]::('now')
+        if ($Data.Hashes -and ([DateTimeOffset]$Data.lastUpdate.AddHours(1) -gt $now)) {
+            return $Data
+        }
+        Write-Host 'Updating hashes from GitHub.'
         $params = @{
             owner   = 'HarbourMasters'
             rawFile = '/docs/supportedHashes.json'
@@ -183,15 +194,25 @@ Begin {
         $Hashes = & {
             Get-Hashes @params -repo 'Shipwright' | Add-Member 'Game' 'SoH' -PassThru -ErrorAction SilentlyContinue
             Get-Hashes @params -repo '2ship2harkinian' | Add-Member 'Game' '2S2H' -PassThru -ErrorAction SilentlyContinue
-            Get-Hashes @params -repo 'Starship' | Add-Member 'Game' 'Starship' -PassThru -ErrorAction SilentlyContinue
+            #Get-Hashes @params -repo 'Starship' | Add-Member 'Game' 'Starship' -PassThru -ErrorAction SilentlyContinue
         }
-        return $Hashes
+        if (!$Hashes) {
+            Write-Warning 'Could not update compatible sha1 hashes from GitHub!'
+        }
+        else {
+
+            $Data = [PSCustomObject]@{
+                Hashes = $Hashes
+                lastUpdate = $now
+            } 
+            $Data | ConvertTo-Json | Out-File 'HMHashes.json'
+            return $Data
+            
+        }
     }
 
-    $HMhashes = Get-HMHashes
-    if (!$HMhashes) {
-        Write-Warning 'Could not get any compatible sha1 hashes from GitHub!'
-    }
+    $HMhashes = (Get-HMHashes).Hashes
+
 }
 
 Process {
