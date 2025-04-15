@@ -1,6 +1,6 @@
 <#
 .DESCRIPTION
-Extracts or lists files from an uncompressed GameCube image (uncompressed gcm/iso). As this was originally written for "Harbor Masters 64" ports, it tries to extract a PAL OoT, PAL MQ or NTSC-U MM ROM by default. But it can also be used to extract any raw file from the gcm/iso by name or just list its file system.
+Extracts or lists files from an uncompressed GameCube image (uncompressed gcm/iso). As this was originally written for "Harbor Masters 64" ports, it tries to extract a supported OoT, MQ or MM ROM by default. But it can also be used to extract any raw file from the gcm/iso by name or just list its file system.
 
 Requires you to install .NET and Powershell on MacOS and Linux (untested, but should work).
 
